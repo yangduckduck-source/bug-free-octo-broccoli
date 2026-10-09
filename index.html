@@ -23,11 +23,15 @@
   }
   #stage {
     position: absolute; inset: 0;
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px;
   }
-  #wrap { position: relative; }
+  #wrap { position: relative; max-width: 100%; }
   canvas {
     display: block;
+    /* JS가 폭을 잘못 재도 화면 밖으로 넘치지 않게: 폭만 정하고 높이는 비율로 */
+    width: 96vw; max-width: 100%; height: auto;
+    aspect-ratio: 480 / 270;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     box-shadow: 0 0 0 4px #000, 0 0 0 8px #123326;
@@ -59,6 +63,8 @@
   .small { font-size: clamp(12px, 2.4vw, 15px); color: var(--dim); text-shadow: 1px 1px 0 #000; }
   .blink { animation: blink 1s steps(2) infinite; margin-top: 20px; font-size: clamp(12px, 2.4vw, 15px); }
   @keyframes blink { 50% { opacity: 0; } }
+  #rotate { display: none; font-size: 13px; color: var(--dim); }
+  @media (orientation: portrait) { #rotate { display: block; } }
   #mute {
     position: absolute; right: 8px; bottom: 6px;
     pointer-events: auto;
@@ -89,6 +95,7 @@
 
     <button id="mute" type="button">소리 켬</button>
   </div>
+  <div id="rotate">가로로 돌리면 더 크게 보입니다.</div>
 </div>
 
 <script>
@@ -108,13 +115,23 @@
   const $best = document.getElementById("best");
   const $mute = document.getElementById("mute");
 
+  // 인앱 브라우저(카카오톡 등)는 첫 로드 때 innerWidth를 실제보다 크게 알려 줄 때가 있다.
+  // 실제 배치된 영역(#stage)을 재고, 크기가 바뀔 때마다 다시 맞춘다.
+  const $stage = document.getElementById("stage");
   function fit() {
-    const s = Math.min(window.innerWidth / W, window.innerHeight / H) * 0.96;
-    cv.style.width = Math.floor(W * s) + "px";
-    cv.style.height = Math.floor(H * s) + "px";
+    const vv = window.visualViewport;
+    const vw = Math.min($stage.clientWidth || Infinity, vv ? vv.width : Infinity, document.documentElement.clientWidth || Infinity);
+    const vh = Math.min($stage.clientHeight || Infinity, vv ? vv.height : Infinity, window.innerHeight || Infinity);
+    const s = Math.min(vw / W, vh / H) * 0.96;
+    if (isFinite(s) && s > 0) cv.style.width = Math.floor(W * s) + "px";
   }
   window.addEventListener("resize", fit);
+  window.addEventListener("orientationchange", () => setTimeout(fit, 200));
+  window.addEventListener("load", fit);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
+  if (window.ResizeObserver) new ResizeObserver(fit).observe($stage);
   fit();
+  setTimeout(fit, 300);
 
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
