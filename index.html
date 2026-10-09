@@ -232,6 +232,10 @@
       tone(note(n + 2), 0.12, "square", 0.04, 0, 0.055);
     },
     byte:  () => [0, 4, 7, 9].forEach((n, i) => tone(note(n + 5), 0.06, "square", 0.035, 0, i * 0.045)),
+    clock: kind => {
+      if (kind === "turbo") { tone(220, 0.35, "sawtooth", 0.05, 1760); tone(440, 0.35, "square", 0.025, 1760, 0.05); }
+      else { tone(1200, 0.4, "sawtooth", 0.05, 120); tone(600, 0.4, "square", 0.025, 80, 0.05); }
+    },
     overclock: () => { for (let i = 0; i < 3; i++) { tone(1200, 0.05, "square", 0.04, 0, i * 0.12); tone(900, 0.05, "square", 0.04, 0, i * 0.12 + 0.06); } },
     die: () => {
       noise(0.25, 0.12, 800);
@@ -284,6 +288,13 @@
   let p, plats, gaps, bugs, parts, speed, dist, shake, holding, holdT, t, deadT, lastByte, flash;
   let streak, beatT, beatI, ocWarned;
   let coyote, buffer, freeze, whiteout, trail, trailT, lines, prevY, lastDx;
+  let baseSpeed, mult, clk;
+
+  // 난이도 기준점 (바이트)
+  const CLOCK_FROM = 100;     // 클럭 요동 시작
+  const FLIP_FROM = 150;      // 깜박이는 비트 발판
+  const STACK_FROM = 200;     // 스택 오버플로
+  const TURBO = [1.25, 1.4], THROTTLE = [0.6, 0.72];
 
   // 손맛 상수
   const STEP = 1 / 120;       // 물리는 초당 120번, 화면 주사율과 무관하게
@@ -298,6 +309,8 @@
     bugs = [];
     parts = [];
     speed = 220;
+    baseSpeed = 220;
+    mult = 1;
     dist = 0;
     shake = 0;
     holding = false;
@@ -319,52 +332,89 @@
     lines = [];
     prevY = p.y;
     lastDx = 0;
+    baseSpeed = 220;
+    mult = 1;
+    clk = { phase: "steady", kind: null, timer: 2, target: 1 };
     while (lastPlatEnd() < W * 2) addPlat();
   }
   const platW = pl => pl.n * CW;
   const lastPlatEnd = () => { const l = plats[plats.length - 1]; return l.x + platW(l); };
 
+  // 지금 만드는 지형을 실제로 지나갈 때의 속도 범위.
+  // 클럭이 요동치면 가장 느릴 때도 틈을 넘을 수 있어야 하고, 가장 빠를 때도 버그 뒤에 내려설 자리가 있어야 한다.
+  const genBytes = () => (dist + W * 2) / CW / 8;     // 생성은 화면 두 장 앞에서 일어난다
+  const vMin = () => genBytes() >= CLOCK_FROM ? baseSpeed * THROTTLE[0] : speed;
+  const vMax = () => genBytes() >= CLOCK_FROM ? Math.max(speed, baseSpeed * TURBO[1]) : speed;
+
   function addPlat() {
     const last = plats[plats.length - 1];
     const bits = dist / CW;
+    const lo = vMin(), hi = vMax();
+    // 깜박이는 비트: 짧은 발판 하나. 앞뒤 틈을 좁게 해서, 꺼져 있으면 통째로 뛰어넘을 수 있게 한다.
+    const flip = !last.flip && genBytes() >= FLIP_FROM && Math.random() < 0.2;
     // 빈틈 = 0. 널 포인터는 1 하나가 통째로 빠진 자리.
     let gapCells, isNull = false;
-    if (bits > 120 && Math.random() < 0.22) {
+    if (flip || last.flip) {
+      gapCells = 2 + (Math.random() < 0.5 ? 1 : 0);
+    } else if (bits > 120 && Math.random() < 0.22) {
       gapCells = 1 + (Math.random() < 0.4 ? 1 : 0);
       isNull = true;
     } else {
-      const maxCells = Math.floor((speed * 0.5) / CW);
+      const maxCells = Math.floor(Math.min(speed * 0.5, lo * 0.6) / CW);
       gapCells = clamp(Math.round(rand(2, maxCells)), 2, 12);
     }
     const gapW = gapCells * CW;
     let top = last.top + Math.round(rand(-30, 36) / 4) * 4;
-    if (gapW > speed * 0.38) top = Math.max(top, last.top - 8);   // 먼 틈 뒤엔 높은 벽 금지
+    if (gapW > lo * 0.38) top = Math.max(top, last.top - 8);   // 먼 틈 뒤엔 높은 벽 금지
+    if (flip || last.flip) top = Math.max(top, last.top);        // 비트 발판 주변은 오르막 금지
     top = clamp(top, 104, 212);
-    const n = Math.round(rand(10, 22) + speed / 30);
+    // 스택 오버플로가 들어갈 발판은 앞뒤 여유만큼 길게 만든다
+    const stack = !flip && genBytes() >= STACK_FROM && Math.random() < 0.25;
+    const sw = Math.round(rand(16, 40));
+    const n = flip ? 4
+            : stack ? Math.ceil((hi * 1.05 + sw) / CW) + Math.round(rand(1, 6))
+            : Math.round(rand(10, 22) + hi / 30);
     const gx = last.x + platW(last);
     gaps.push({ x: gx, n: gapCells, isNull, top: Math.min(last.top, top) });
-    const pl = { x: gx + gapW, n, top };
+    const pl = { x: gx + gapW, n, top, flip, ph: rand(0, 1.5), stack: stack ? sw : 0 };
     plats.push(pl);
-    placeBugs(pl);
+    if (!flip) placeBugs(pl);
   }
+
+  // 비트 발판: 1.5초 주기로 0.9초 켜짐 → 0.25초 경고 깜박임 → 0.35초 꺼짐
+  const FLIP_T = 1.5;
+  const flipPhase = pl => (t + pl.ph) % FLIP_T;
+  const flipOn = pl => !pl.flip || flipPhase(pl) < 1.15;
+  const flipWarn = pl => pl.flip && flipPhase(pl) >= 0.9 && flipPhase(pl) < 1.15;
 
   // 버그 배치: 앞쪽엔 착지할 여유, 뒤쪽엔 버그를 넘고 내려설 여유(짧은 점프 체공 ≈ 0.57초)를 둔다.
   function placeBugs(pl) {
     const bits = dist / CW;
     if (bits < 40) return;
     const w = platW(pl);
-    const head = Math.max(60, speed * 0.3);
-    const tail = Math.max(110, speed * 0.62);
+    const v = vMax();
+    // 스택 오버플로: 천장에서 내려온 기둥. 그 밑에선 뛰면 안 된다. 다른 버그와 섞지 않는다.
+    // 앞쪽 여유(0.75초 분량)는 틈을 넘어 착지한 뒤 땅에 붙을 시간, 뒤쪽(0.3초)은 지나간 뒤 다음 틈을 뛸 시간.
+    if (pl.stack) {
+      const head = v * 0.75, tail = v * 0.3 + pl.stack;
+      bugs.push({ kind: "stack", x: pl.x + head + rand(0, Math.max(0, w - head - tail)), w: pl.stack, base: pl.top, t: 0 });
+      return;
+    }
+    const head = Math.max(60, v * 0.3);
+    const tail = Math.max(110, v * 0.62);
     const room = w - head - tail;
     if (room < 0) return;
     const kinds = ["glitch", "roach"];
     if (bits > 200) kinds.push("loop");
     if (bits > 360) kinds.push("leak");
-    const spacing = Math.max(140, speed * 0.8);
-    let count = Math.random() < 0.7 ? 1 : 0;
-    if (room > spacing && bits > 260 && Math.random() < 0.5) count = 2;
+    const spacing = Math.max(140, v * 0.8);
+    // 멀리 갈수록 버그가 촘촘해진다: 한 발판에 최대 3마리
+    const by = genBytes();
+    const maxCount = Math.min(by >= CLOCK_FROM ? 3 : 2, 1 + Math.floor(room / spacing));
+    let count = Math.random() < (by >= CLOCK_FROM ? 0.9 : 0.7) ? 1 : 0;
+    if (count && maxCount >= 2 && bits > 260 && Math.random() < (by >= CLOCK_FROM ? 0.7 : 0.5)) count = maxCount;
     for (let i = 0; i < count; i++) {
-      const x = count === 1 ? pl.x + head + rand(0, room) : pl.x + head + i * room;
+      const x = count === 1 ? pl.x + head + rand(0, room) : pl.x + head + i * (room / (count - 1));
       const kind = pick(kinds);
       bugs.push({ kind, x, base: pl.top, t: rand(0, 6), size: kind === "leak" ? 6 : 0, jx: 0, off: 0, face: -1 });
     }
@@ -377,6 +427,7 @@
       case "roach":  return { x: b.x + b.off - 8, y: b.base - 9, w: 16, h: 9 };
       case "loop":   { const r = 6 + Math.sin(b.t * 3) * 2; return { x: b.x - r, y: b.base - 9 - r, w: r * 2, h: r * 2 }; }
       case "leak":   return { x: b.x - b.size / 2, y: b.base - 3, w: b.size, h: 3 };
+      case "stack":  return { x: b.x, y: -20, w: b.w, h: b.base - 30 + 20 };
     }
   }
 
@@ -395,6 +446,7 @@
     roach:  "바퀴벌레에 걸렸다.",
     loop:   "루프에 갇혔다.",
     leak:   "누수에 잠겼다.",
+    stack:  "스택이 넘쳤다.",
   };
 
   const fmtBytes = b => b < 1024 ? b + " B" : (b / 1024).toFixed(2) + " KB";
@@ -475,7 +527,32 @@
     }
 
     prevY = p.y;
-    speed = Math.min(560, speed + dt * 8);
+    // 기본 속도는 꾸준히 오르고, 100B부터는 최고치도 조금 더 오른다
+    baseSpeed = Math.min(bytesNow() >= CLOCK_FROM ? 600 : 560, baseSpeed + dt * 8);
+    // 클럭 요동: 터보로 치솟았다가, 스로틀로 주저앉았다가, 불규칙하게 반복
+    if (bytesNow() >= CLOCK_FROM) {
+      clk.timer -= dt;
+      if (clk.timer <= 0) {
+        if (clk.phase === "steady") {
+          clk.phase = "warn";
+          clk.kind = Math.random() < 0.55 ? "turbo" : "throttle";
+          clk.timer = 0.8;                                   // 0.8초 먼저 알린다
+          sfx.clock(clk.kind);
+        } else if (clk.phase === "warn") {
+          clk.phase = "event";
+          clk.target = clk.kind === "turbo" ? rand(TURBO[0], TURBO[1]) : rand(THROTTLE[0], THROTTLE[1]);
+          clk.timer = clk.kind === "turbo" ? rand(1.8, 3.2) : rand(1.4, 2.6);
+          shake = Math.max(shake, 3);
+        } else {
+          clk.phase = "steady";
+          clk.kind = null;
+          clk.target = 1;
+          clk.timer = rand(2, 5.5);
+        }
+      }
+    }
+    mult += (clk.target - mult) * (1 - Math.pow(0.004, dt));   // 0.3초 남짓에 거의 다 따라간다
+    speed = baseSpeed * mult;
     const dx = speed * dt;
     lastDx = dx;
     dist += dx;
@@ -509,6 +586,7 @@
 
     let landed = false;
     for (const pl of plats) {
+      if (!flipOn(pl)) continue;                       // 꺼진 비트는 빈자리다
       const x0 = pl.x + 4, x1 = pl.x + platW(pl);   // 첫 글자의 깃발 획은 발판이 아니다
       if (PX + PW <= x0 || PX >= x1) continue;
       if (prevBottom <= pl.top + 1 && bottom >= pl.top) {
@@ -553,7 +631,7 @@
     beatT += dt;
     const step = 30 / bpm;
     if (beatT >= step) { beatT -= step; sfx.beat(beatI++, speed > 430); }
-    if (!ocWarned && speed > 430) { ocWarned = true; sfx.overclock(); }
+    if (!ocWarned && baseSpeed > 430) { ocWarned = true; sfx.overclock(); }
 
     const by = bytesNow();
     if (by > lastByte && by % 16 === 0) { sfx.byte(); flash = 0.6; }
@@ -703,10 +781,29 @@
 
   function drawPlat(pl) {
     if (pl.x > W || pl.x + platW(pl) < -CW) return;
+    if (pl.flip && !flipOn(pl)) {
+      // 꺼진 비트: 1이 0으로 뒤집힌 자리
+      ctx.fillStyle = "rgba(255,181,71,0.35)";
+      ctx.font = "bold 14px monospace";
+      ctx.textBaseline = "alphabetic";
+      for (let i = 0; i < pl.n; i++) {
+        const x = pl.x + i * CW;
+        ctx.fillText("0", R(x) + 5, pl.top + 4);
+        for (let y = pl.top + 10; y < SERIF_Y; y += 6) ctx.fillRect(R(x) + 10, y, 1, 2);
+      }
+      return;
+    }
+    if (flipWarn(pl) && Math.floor(t * 18) % 2) ctx.globalAlpha = 0.35;
     for (let i = 0; i < pl.n; i++) {
       const x = pl.x + i * CW;
       if (x > W || x + CW < 0) continue;
       drawOne(x, pl.top, true);
+    }
+    ctx.globalAlpha = 1;
+    if (pl.flip) {
+      // 불안정한 비트 표시: 머리에 호박색 띠
+      ctx.fillStyle = "#ffb547";
+      for (let i = 0; i < pl.n; i++) ctx.fillRect(R(pl.x + i * CW) + 6, pl.top, 9, 2);
     }
   }
 
@@ -725,7 +822,7 @@
 
   function drawBug(b) {
     const x = R(b.x), y = b.base;
-    if (x < -30 || x > W + 30) return;
+    if (x < -50 || x > W + 30) return;
     switch (b.kind) {
       case "glitch": {
         const jx = x + b.jx;
@@ -778,6 +875,20 @@
         ctx.fillStyle = "#ffb547"; ctx.fillRect(R(ax) - 2, R(ay) - 2, 4, 4);
         break;
       }
+      case "stack": {
+        // 스택 오버플로: 위에서부터 쌓여 내려온 호출 프레임
+        const bottom = b.base - 30;
+        for (let yy = bottom - 8, i = 0; yy > -10; yy -= 9, i++) {
+          ctx.fillStyle = i % 2 ? "#2d2650" : "#3d3370";
+          ctx.fillRect(R(b.x), yy, b.w, 8);
+          ctx.fillStyle = "#5b4ca0";
+          ctx.fillRect(R(b.x) + 2, yy + 2, Math.min(b.w - 4, 8 + (i * 5) % 14), 1);
+        }
+        ctx.fillStyle = Math.floor(b.t * 6) % 2 ? "#ff6a3d" : "#c2402a";   // 넘친 맨 아래 칸
+        ctx.fillRect(R(b.x), bottom - 8, b.w, 8);
+        for (let xx = 2; xx < b.w - 2; xx += 6) ctx.fillRect(R(b.x) + xx, bottom, 2, 2 + ((xx + Math.floor(b.t * 4)) % 3));
+        break;
+      }
       case "leak": {
         const w = R(b.size);
         ctx.fillStyle = "#7b3cff";
@@ -817,10 +928,17 @@
     ctx.font = "bold 10px monospace";
     shadow("BUG ×" + streak, 10, 24, "#cfe9dd");
     if (best > 0) shadow("BEST " + fmtBytes(best), 10, 37, "#6fa58f");
-    const clk = "CLK " + (speed / 100).toFixed(1) + "GHz";
-    const cw = ctx.measureText(clk).width;
-    shadow(clk, W - cw - 10, 8, "#6fa58f");
-    if (speed > 430 && Math.floor(t * 3) % 2) {
+    const clkText = "CLK " + (speed / 100).toFixed(1) + "GHz";
+    const cw = ctx.measureText(clkText).width;
+    shadow(clkText, W - cw - 10, 8, clk.kind === "turbo" && clk.phase === "event" ? "#ff6a3d"
+                                   : clk.kind === "throttle" && clk.phase === "event" ? "#3bd1ff" : "#6fa58f");
+    if (clk.kind) {
+      // 경고 중엔 깜박이고, 실제로 걸리면 계속 켜져 있다
+      const tb = clk.kind === "turbo";
+      const label = tb ? "TURBO ▲" : "THROTTLE ▼";
+      if (clk.phase === "event" || Math.floor(t * 8) % 2)
+        shadow(label, W - ctx.measureText(label).width - 10, 21, tb ? "#ff6a3d" : "#3bd1ff");
+    } else if (baseSpeed > 430 && Math.floor(t * 3) % 2) {
       const oc = "OVERCLOCK";
       shadow(oc, W - ctx.measureText(oc).width - 10, 21, "#ffb547");
     }
@@ -862,6 +980,11 @@
     ctx.restore();
     drawZero();
     ctx.restore();
+    if (state === "play" && Math.abs(mult - 1) > 0.03) {
+      const a = Math.min(0.12, Math.abs(mult - 1) * 0.3);
+      ctx.fillStyle = mult > 1 ? "rgba(255,90,40," + a.toFixed(3) + ")" : "rgba(40,140,255," + a.toFixed(3) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
     if (whiteout > 0) {
       ctx.fillStyle = "rgba(230,255,244," + (whiteout * 0.5).toFixed(3) + ")";
       ctx.fillRect(0, 0, W, H);
@@ -889,7 +1012,9 @@
   window.__zerorun = {
     get state() { return state; }, get dist() { return dist; }, get speed() { return speed; },
     get player() { return { x: PX, y: p.y, w: PW, h: PH, ground: p.ground, vy: p.vy }; },
-    get plats() { return plats.map(pl => ({ x: pl.x, w: platW(pl), top: pl.top })); },
+    get plats() { return plats.filter(flipOn).map(pl => ({ x: pl.x, w: platW(pl), top: pl.top, flip: !!pl.flip })); },
+    get allPlats() { return plats.map(pl => ({ x: pl.x, w: platW(pl), top: pl.top, flip: !!pl.flip, on: flipOn(pl) })); },
+    get clock() { return { ...clk, mult }; },
     get bugs() { return bugs.map(b => ({ kind: b.kind, ...bugBox(b) })); },
   };
 })();
