@@ -106,7 +106,17 @@
   const W = 480, H = 270;
   const cv = document.getElementById("c");
   const ctx = cv.getContext("2d");
-  ctx.imageSmoothingEnabled = false;
+  // 논리 좌표는 480×270 그대로 두고, 실제 픽셀은 K배로 그린다.
+  // 픽셀아트의 각진 맛은 유지하면서 스크롤은 기기 픽셀 단위로 매끄럽게 움직인다.
+  let K = 1;
+  const R = v => Math.round(v * K) / K;
+  function setScale(k) {
+    if (k === K && cv.width === W * k && bgTile) return;
+    K = k;
+    cv.width = W * K; cv.height = H * K;
+    ctx.imageSmoothingEnabled = false;
+    buildBgTile();
+  }
 
   const $title = document.getElementById("title");
   const $over = document.getElementById("over");
@@ -123,14 +133,17 @@
     const vw = Math.min($stage.clientWidth || Infinity, vv ? vv.width : Infinity, document.documentElement.clientWidth || Infinity);
     const vh = Math.min($stage.clientHeight || Infinity, vv ? vv.height : Infinity, window.innerHeight || Infinity);
     const s = Math.min(vw / W, vh / H) * 0.96;
-    if (isFinite(s) && s > 0) cv.style.width = Math.floor(W * s) + "px";
+    if (isFinite(s) && s > 0) {
+      cv.style.width = Math.floor(W * s) + "px";
+      const dpr = window.devicePixelRatio || 1;
+      setScale(clamp(Math.ceil(s * dpr), 1, 2));   // 2배면 반 픽셀 스크롤로 충분하고, 저사양 기기도 버틴다
+    }
   }
   window.addEventListener("resize", fit);
   window.addEventListener("orientationchange", () => setTimeout(fit, 200));
   window.addEventListener("load", fit);
   if (window.visualViewport) window.visualViewport.addEventListener("resize", fit);
   if (window.ResizeObserver) new ResizeObserver(fit).observe($stage);
-  fit();
   setTimeout(fit, 300);
 
   const store = {
@@ -270,6 +283,13 @@
   let best = Number(store.get("zerorun.best")) || 0;
   let p, plats, gaps, bugs, parts, speed, dist, shake, holding, holdT, t, deadT, lastByte, flash;
   let streak, beatT, beatI, ocWarned;
+  let coyote, buffer, freeze, whiteout, trail, trailT, lines, prevY, lastDx;
+
+  // 손맛 상수
+  const STEP = 1 / 120;       // 물리는 초당 120번, 화면 주사율과 무관하게
+  const COYOTE = 0.08;        // 발판을 막 벗어나도 이 시간 안엔 뛸 수 있다
+  const BUFFER = 0.12;        // 착지 직전에 누른 입력을 이 시간만큼 기억한다
+  const FALL_G = 1.12;        // 내려올 땐 조금 더 무겁게: 포물선이 또렷해진다
 
   function reset() {
     p = { y: 160 - PH, vy: 0, ground: true, squash: 0, blink: 0 };
@@ -290,6 +310,15 @@
     beatI = 0;
     ocWarned = false;
     flash = 0;
+    coyote = 0;
+    buffer = 0;
+    freeze = 0;
+    whiteout = 0;
+    trail = [];
+    trailT = 0;
+    lines = [];
+    prevY = p.y;
+    lastDx = 0;
     while (lastPlatEnd() < W * 2) addPlat();
   }
   const platW = pl => pl.n * CW;
@@ -377,6 +406,8 @@
     deadT = 0;
     sfx.die();
     shake = 9;
+    freeze = 0.11;           // 부딪힌 순간을 잠깐 멈춰 보여 준다
+    whiteout = 1;
     for (let i = 0; i < 14; i++) {
       parts.push({ x: PX + PW / 2, y: p.y + PH / 2, vx: rand(-160, 160), vy: rand(-240, 40),
                    life: rand(0.5, 1.1), t: 0, color: Math.random() < 0.5 ? "#5dffc3" : "#e6fff4", s: 2, g: true, ch: Math.random() < 0.4 ? "0" : null });
@@ -400,13 +431,19 @@
     if (state === "title") { start(); return; }
     if (state === "over") { if (deadT > 0.8) start(); return; }
     holding = true;
-    if (p.ground) {
-      p.vy = JUMP_V;
-      p.ground = false;
-      p.squash = -0.25;      // 뛰어오를 땐 길쭉하게
-      holdT = 0;
-      sfx.jump();
-    }
+    buffer = BUFFER;
+    tryJump();
+  }
+  function tryJump() {
+    if (buffer <= 0 || !(p.ground || coyote > 0)) return;
+    p.vy = JUMP_V;
+    p.ground = false;
+    p.squash = -0.25;      // 뛰어오를 땐 길쭉하게
+    holdT = 0;
+    buffer = 0;
+    coyote = 0;
+    sfx.jump();
+    for (let i = 0; i < 4; i++) parts.push({ x: PX + PW / 2, y: p.y + PH, vx: rand(-90, -20), vy: rand(-40, 0), life: 0.25, t: 0, color: "#2e8a66", s: 2 });
   }
   function release() { holding = false; }
   const KEYS = new Set(["Space", "ArrowUp", "KeyW", "Enter"]);
@@ -429,15 +466,21 @@
     if (state === "title") return;
 
     if (state === "over") {
+      whiteout = Math.max(0, whiteout - dt * 6);
+      if (freeze > 0) { freeze -= dt; return; }
       deadT += dt;
       stepParts(dt, 0);
-      shake *= 0.88;
+      shake *= Math.pow(0.0005, dt);
       return;
     }
 
+    prevY = p.y;
     speed = Math.min(560, speed + dt * 8);
     const dx = speed * dt;
+    lastDx = dx;
     dist += dx;
+    buffer -= dt;
+    coyote -= dt;
 
     for (const pl of plats) pl.x -= dx;
     for (const g of gaps) g.x -= dx;
@@ -458,6 +501,7 @@
     // 길게 누르면 더 높이
     let g = GRAV;
     if (holding && p.vy < 0 && holdT < HOLD_TIME) { g *= 0.42; holdT += dt; }
+    else if (p.vy > 0) g *= FALL_G;
     const prevBottom = p.y + PH;
     p.vy += g * dt;
     p.y += p.vy * dt;
@@ -470,7 +514,7 @@
       if (prevBottom <= pl.top + 1 && bottom >= pl.top) {
         if (!p.ground && p.vy > 240) {
           sfx.land();
-          p.squash = 0.3;
+          p.squash = clamp(p.vy / 1700, 0.18, 0.38);   // 세게 떨어질수록 더 납작하게
           for (let i = 0; i < 5; i++) parts.push({ x: PX + PW / 2, y: pl.top, vx: rand(-80, 30), vy: rand(-50, -10), life: 0.3, t: 0, color: "#2e8a66", s: 2 });
         }
         p.y = pl.top - PH; p.vy = 0; landed = true;
@@ -479,6 +523,7 @@
       }
     }
     p.ground = landed;
+    if (landed) { coyote = COYOTE; tryJump(); }   // 미리 눌러 둔 점프는 착지하자마자
     p.squash *= Math.pow(0.0005, dt);
 
     // 버그는 닿는 순간 끝
@@ -515,8 +560,21 @@
     lastByte = by;
     flash = Math.max(0, flash - dt);
 
+    // 잔상: 공중에 있을 때 0의 궤적을 남긴다
+    trailT -= dt;
+    if (!p.ground && trailT <= 0) { trail.push({ x: PX, y: p.y, a: 0.35 }); trailT = 0.025; }
+    for (const q of trail) { q.x -= dx; q.a -= dt * 1.6; }
+    trail = trail.filter(q => q.a > 0);
+
+    // 속도선: 오버클럭 구간에서 화면을 가로지르는 빛줄기
+    if (speed > 400 && Math.random() < (speed - 400) / 900) {
+      lines.push({ x: W + 10, y: rand(20, H - 30), len: rand(16, 46), v: rand(1.6, 2.4) });
+    }
+    for (const q of lines) q.x -= dx * q.v;
+    lines = lines.filter(q => q.x + q.len > 0);
+
     stepParts(dt, dx);
-    shake *= 0.85;
+    shake *= Math.pow(0.0001, dt);
   }
 
   function stepParts(dt, dx) {
@@ -538,48 +596,68 @@
     zero: "#5dffc3", zeroGlow: "rgba(93,255,195,0.25)",
   };
 
-  function drawBoard() {
-    const grd = ctx.createLinearGradient(0, 0, 0, H);
-    grd.addColorStop(0, C.bg1); grd.addColorStop(1, C.bg2);
-    ctx.fillStyle = grd;
+  // 칩·배선은 움직이지 않는 그림이라 한 번만 그려 두고(K배 해상도) 매 프레임 복사만 한다.
+  let bgTile = null, bgGrad = null;
+  function buildBgTile() {
+    bgTile = document.createElement("canvas");
+    bgTile.width = TILE * K; bgTile.height = H * K;
+    const c = bgTile.getContext("2d");
+    c.setTransform(K, 0, 0, K, 0, 0);
+    for (const ox of [0, -TILE]) {          // 타일 끝을 넘어간 배선은 앞쪽에 이어 붙인다
+      for (const ch of chips) {
+        const x = ch.x + ox;
+        c.fillStyle = C.chip; c.fillRect(x, ch.y, ch.w, ch.h);
+        c.fillStyle = C.chipEdge;
+        c.fillRect(x, ch.y, ch.w, 1); c.fillRect(x, ch.y + ch.h - 1, ch.w, 1);
+        for (let px = x + 4; px < x + ch.w - 2; px += 6) { c.fillRect(px, ch.y - 3, 2, 3); c.fillRect(px, ch.y + ch.h, 2, 3); }
+      }
+      c.strokeStyle = C.trace; c.lineWidth = 2;
+      for (const tr of traces) {
+        c.beginPath();
+        tr.pts.forEach(([x, y], i) => i ? c.lineTo(x + ox, y) : c.moveTo(x + ox, y));
+        c.stroke();
+        c.fillStyle = C.via;
+        const [ex, ey] = tr.pts[tr.pts.length - 1], [sx, sy] = tr.pts[0];
+        c.fillRect(sx + ox - 2, sy - 2, 4, 4);
+        c.fillRect(ex + ox - 2, ey - 2, 4, 4);
+      }
+    }
+  }
+
+  function drawBoard(rd) {
+    if (!bgGrad) {
+      bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+      bgGrad.addColorStop(0, C.bg1); bgGrad.addColorStop(1, C.bg2);
+    }
+    ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, W, H);
 
     // 웨이퍼 격자
-    const goff = (dist * 0.1) % 16;
+    const goff = (rd * 0.1) % 16;
     ctx.fillStyle = C.grid;
-    for (let x = -goff; x < W; x += 16) ctx.fillRect(Math.round(x), 0, 1, H);
+    for (let x = -goff; x < W; x += 16) ctx.fillRect(R(x), 0, 1, H);
     for (let y = 0; y < H; y += 16) ctx.fillRect(0, y, W, 1);
 
     // 배선·칩 (패럴랙스)
-    const off = (dist * 0.3) % TILE;
+    const off = (rd * 0.3) % TILE;
     for (let k = 0; k < 2; k++) {
       const ox = -off + k * TILE;
-      for (const c of chips) {
-        const x = Math.round(c.x + ox);
-        if (x > W || x + c.w < 0) continue;
-        ctx.fillStyle = C.chip; ctx.fillRect(x, c.y, c.w, c.h);
-        ctx.fillStyle = C.chipEdge;
-        ctx.fillRect(x, c.y, c.w, 1); ctx.fillRect(x, c.y + c.h - 1, c.w, 1);
-        for (let px = x + 4; px < x + c.w - 2; px += 6) { ctx.fillRect(px, c.y - 3, 2, 3); ctx.fillRect(px, c.y + c.h, 2, 3); }
-      }
-      ctx.strokeStyle = C.trace; ctx.lineWidth = 2;
+      if (ox > W || ox + TILE < 0) continue;
+      ctx.drawImage(bgTile, R(ox), 0, TILE, H);
+    }
+    // 클럭 신호: 배선을 따라 흐르는 빛 한 점
+    ctx.fillStyle = C.pulse;
+    ctx.globalAlpha = 0.6;
+    for (let k = -1; k < 2; k++) {
+      const ox = -off + k * TILE;
       for (const tr of traces) {
-        ctx.beginPath();
-        tr.pts.forEach(([x, y], i) => i ? ctx.lineTo(Math.round(x + ox), y) : ctx.moveTo(Math.round(x + ox), y));
-        ctx.stroke();
-        ctx.fillStyle = C.via;
-        const [ex, ey] = tr.pts[tr.pts.length - 1], [sx, sy] = tr.pts[0];
-        ctx.fillRect(Math.round(sx + ox) - 2, sy - 2, 4, 4);
-        ctx.fillRect(Math.round(ex + ox) - 2, ey - 2, 4, 4);
-        // 클럭 신호: 배선을 따라 흐르는 빛 한 점
-        const f = (t * tr.spd + tr.phase) % 1;
-        const pos = pointOn(tr.pts, f);
-        ctx.fillStyle = C.pulse;
-        ctx.globalAlpha = 0.6;
-        ctx.fillRect(Math.round(pos[0] + ox) - 1, pos[1] - 1, 3, 3);
-        ctx.globalAlpha = 1;
+        const pos = pointOn(tr.pts, (t * tr.spd + tr.phase) % 1);
+        const x = pos[0] + ox;
+        if (x < -4 || x > W + 4) continue;
+        ctx.fillRect(R(x) - 1, pos[1] - 1, 3, 3);
       }
     }
+    ctx.globalAlpha = 1;
   }
 
   function pointOn(pts, f) {
@@ -602,7 +680,7 @@
 
   // 숫자 1 한 글자: 깃발 획 + 기둥 + 받침
   function drawOne(x, top, solid) {
-    x = Math.round(x);
+    x = R(x);
     if (solid) {
       ctx.fillStyle = C.one;
       ctx.fillRect(x + 6, top, 9, SERIF_Y - top);            // 기둥
@@ -641,12 +719,12 @@
       if (g.isNull) { drawOne(x, g.top, false); continue; }
       // 빈틈은 0으로 읽힌다
       ctx.fillStyle = "rgba(93,255,195,0.18)";
-      ctx.fillText("0", Math.round(x) + 6, H - 4);
+      ctx.fillText("0", R(x) + 6, H - 4);
     }
   }
 
   function drawBug(b) {
-    const x = Math.round(b.x), y = b.base;
+    const x = R(b.x), y = b.base;
     if (x < -30 || x > W + 30) return;
     switch (b.kind) {
       case "glitch": {
@@ -661,7 +739,7 @@
       }
       case "roach": {
         // 바퀴벌레: 제자리 근처를 바삐 오가며 더듬이를 흔든다
-        const rx = Math.round(b.x + b.off), ry = y;
+        const rx = R(b.x + b.off), ry = y;
         const f = b.face;                          // -1 = 왼쪽(0 쪽)을 본다
         const step = Math.floor(b.t * 18) % 2;
         ctx.fillStyle = "#1a0d05";                 // 다리 6개, 두 박자로 엇갈린다
@@ -683,7 +761,7 @@
         ctx.fillStyle = "#2b1508";                 // 머리
         ctx.fillRect(rx + f * 9 - (f < 0 ? 2 : 0), ry - 7, 3, 4);
         ctx.fillStyle = "#d9a06a";                 // 더듬이: 길게, 밝게
-        const wag = Math.round(Math.sin(b.t * 9) * 1.5);
+        const wag = R(Math.sin(b.t * 9) * 1.5);
         for (let k = 0; k < 4; k++) {
           ctx.fillRect(rx + f * (11 + k * 2), ry - 8 - k + wag, 1, 1);
           ctx.fillRect(rx + f * (11 + k * 2), ry - 6 - Math.floor(k / 2) - wag, 1, 1);
@@ -697,11 +775,11 @@
         const a0 = b.t * 6;
         ctx.beginPath(); ctx.arc(cx, cy, r, a0, a0 + Math.PI * 1.6); ctx.stroke();
         const ax = cx + Math.cos(a0 + Math.PI * 1.6) * r, ay = cy + Math.sin(a0 + Math.PI * 1.6) * r;
-        ctx.fillStyle = "#ffb547"; ctx.fillRect(Math.round(ax) - 2, Math.round(ay) - 2, 4, 4);
+        ctx.fillStyle = "#ffb547"; ctx.fillRect(R(ax) - 2, R(ay) - 2, 4, 4);
         break;
       }
       case "leak": {
-        const w = Math.round(b.size);
+        const w = R(b.size);
         ctx.fillStyle = "#7b3cff";
         ctx.fillRect(x - w / 2, y - 3, w, 3);
         ctx.fillStyle = "#b48aff";
@@ -716,7 +794,7 @@
     if (state === "over" && p.dead) return;
     const sq = state === "play" ? p.squash : Math.sin(t * 10) * 0.06;
     const w = PW * (1 + sq), h = PH * (1 - sq);
-    const cx = PX + PW / 2, by = p.y + PH;
+    const cx = PX + PW / 2, by = ry + PH;
     const cy = by - h / 2;
     ctx.fillStyle = C.zeroGlow;
     ctx.beginPath(); ctx.ellipse(cx, cy, w / 2 + 3, h / 2 + 3, 0, 0, Math.PI * 2); ctx.fill();
@@ -726,8 +804,8 @@
     ctx.fillStyle = "#e6fff4";
     const eh = p.blink > 0 ? 1 : 3;
     const look = state === "play" && !p.ground ? (p.vy < 0 ? -2 : 1) : 0;
-    ctx.fillRect(Math.round(cx - 2), Math.round(cy - 2 + look), 1, eh);
-    ctx.fillRect(Math.round(cx + 1), Math.round(cy - 2 + look), 1, eh);
+    ctx.fillRect(R(cx - 2), R(cy - 2 + look), 1, eh);
+    ctx.fillRect(R(cx + 1), R(cy - 2 + look), 1, eh);
   }
 
   function drawHUD() {
@@ -737,7 +815,8 @@
     const shadow = (txt, x, y, col) => { ctx.fillStyle = "#000"; ctx.fillText(txt, x + 1, y + 1); ctx.fillStyle = col; ctx.fillText(txt, x, y); };
     shadow(s, 10, 8, flash > 0 && Math.floor(flash * 10) % 2 ? "#ffffff" : C.zero);
     ctx.font = "bold 10px monospace";
-    if (best > 0) shadow("BEST " + fmtBytes(best), 10, 24, "#6fa58f");
+    shadow("BUG ×" + streak, 10, 24, "#cfe9dd");
+    if (best > 0) shadow("BEST " + fmtBytes(best), 10, 37, "#6fa58f");
     const clk = "CLK " + (speed / 100).toFixed(1) + "GHz";
     const cw = ctx.measureText(clk).width;
     shadow(clk, W - cw - 10, 8, "#6fa58f");
@@ -747,37 +826,63 @@
     }
   }
 
-  function draw() {
+  let ry = 0;   // 보간된 0의 높이
+  function draw(alpha) {
+    // 물리는 1/120초 단위로 움직이므로, 그 사이 시점을 메워 그린다.
+    const sx = state === "play" ? R((1 - alpha) * lastDx) : 0;
+    ry = state === "play" ? prevY + (p.y - prevY) * alpha : p.y;
+    ctx.setTransform(K, 0, 0, K, 0, 0);
     ctx.save();
-    if (shake > 0.3) ctx.translate(Math.round(rand(-shake, shake)), Math.round(rand(-shake, shake)));
-    drawBoard();
+    if (shake > 0.3) ctx.translate(R(rand(-shake, shake)), R(rand(-shake, shake)));
+    drawBoard(dist - sx);
+    ctx.save();
+    ctx.translate(sx, 0);
+    ctx.fillStyle = C.pulse;
+    for (const q of lines) { ctx.globalAlpha = 0.22; ctx.fillRect(R(q.x), q.y, q.len, 1); }
+    ctx.globalAlpha = 1;
     for (const g of gaps) drawGap(g);
     for (const pl of plats) drawPlat(pl);
     for (const b of bugs) drawBug(b);
+    // 잔상
+    ctx.strokeStyle = C.zero; ctx.lineWidth = 2;
+    for (const q of trail) {
+      ctx.globalAlpha = Math.max(0, q.a);
+      ctx.beginPath(); ctx.ellipse(q.x + PW / 2, q.y + PH / 2, PW / 2 - 1.5, PH / 2 - 1.5, 0, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
     ctx.textBaseline = "middle";
     ctx.font = "bold 8px monospace";
     for (const q of parts) {
       ctx.globalAlpha = 1 - q.t / q.life;
       ctx.fillStyle = q.color;
-      if (q.ch) ctx.fillText(q.ch, Math.round(q.x), Math.round(q.y));
-      else ctx.fillRect(Math.round(q.x), Math.round(q.y), q.s, q.s);
+      if (q.ch) ctx.fillText(q.ch, R(q.x), R(q.y));
+      else ctx.fillRect(R(q.x), R(q.y), q.s, q.s);
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
     drawZero();
     ctx.restore();
+    if (whiteout > 0) {
+      ctx.fillStyle = "rgba(230,255,244," + (whiteout * 0.5).toFixed(3) + ")";
+      ctx.fillRect(0, 0, W, H);
+    }
     if (state !== "title") drawHUD();
   }
 
   // ---------- 루프 ----------
-  let last = performance.now();
+  // 화면이 30Hz든 144Hz든 물리는 1/120초씩 같은 걸음으로 걷는다.
+  let last = performance.now(), acc = 0;
   function frame(now) {
-    const dt = Math.min(0.033, (now - last) / 1000);
+    acc += clamp((now - last) / 1000, 0, 0.1);
     last = now;
-    update(dt);
-    draw();
+    let n = 0;
+    while (acc >= STEP && n < 12) { update(STEP); acc -= STEP; n++; }
+    if (n === 12) acc = 0;    // 탭이 오래 멈췄다 돌아오면 밀린 걸음은 버린다
+    draw(acc / STEP);
     requestAnimationFrame(frame);
   }
   reset();
+  fit();
   requestAnimationFrame(frame);
 
   // 자동 테스트용 읽기 전용 훅
