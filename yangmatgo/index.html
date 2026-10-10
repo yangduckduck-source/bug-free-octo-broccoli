@@ -540,14 +540,16 @@
 
   // ================= 목소리 =================
   // 기기에 들어 있는 한국어 음성으로, 높고 발랄하게 말한다.
+  // 기계 음성은 문장을 말하면 억양이 어색하다. 짧은 감탄사와 낱말로만.
   const LINES = {
-    bomb: ["폭탄이다~!", "펑! 폭탄~!"], shake: ["흔들어 흔들어~!"], jjok: ["쪽~!", "쪽! 히힛"], ppuk: ["앗, 뻑이야!", "뻑~!"],
-    ttadak: ["따닥~!"], sweep: ["싹쓸이~!", "싹 다 쓸었다~!"], eatppuk: ["뻑 먹었다~!"], jappuk: ["자뻑이다~!"],
-    stop: ["스톱!", "여기까지~ 스톱!"], pibak: ["피박이야~!"], gwangbak: ["광박!"], meongtta: ["멍따~!"], gobak: ["고박이네~!"],
-    nagari: ["나가리네~"], win: ["이겼다~! 최고야!", "와아, 이겼다~!"], lose: ["에잉, 아깝다~", "다음엔 이길 거야!"],
-    start: ["시작해 볼까요~?"],
+    bomb: ["폭탄!", "펑!"], shake: ["흔들어!"], jjok: ["쪽!"], ppuk: ["쌌다!", "뻑!"],
+    ttadak: ["따닥!"], sweep: ["싹쓸이!"], eatppuk: ["냠!"], jappuk: ["자뻑!"],
+    godori: ["고도리!"], hong: ["홍단!"], cheong: ["청단!"], cho: ["초단!"],
+    gwang3: ["삼광!"], gwang4: ["사광!"], gwang5: ["오광!"],
+    stop: ["스톱!"], pibak: ["피박!"], gwangbak: ["광박!"], meongtta: ["멍따!"], gobak: ["고박!"],
+    nagari: ["나가리!"], win: ["앗싸!", "아싸!"], lose: ["아이고!", "에구!"], on: ["짠!"],
   };
-  const GO_NUM = ["", "", "투", "쓰리", "포", "파이브", "식스", "세븐"];
+  const GO_WORD = ["", "고!", "투고!", "쓰리고!", "포고!", "파이브고!", "식스고!", "세븐고!"];
   let voice = null;
   function pickVoice() {
     try {
@@ -563,12 +565,12 @@
       if (speechSynthesis.pending) speechSynthesis.cancel();   // 밀린 말이 쌓이면 비우고 지금 것만
       const u = new SpeechSynthesisUtterance(text);
       u.lang = "ko-KR"; if (voice) u.voice = voice;
-      u.pitch = 1.75; u.rate = 1.08; u.volume = 1;
+      u.pitch = 1.6; u.rate = 1.0; u.volume = 1;            // 짧은 낱말은 너무 빠르면 뭉개진다
       speechSynthesis.speak(u);
     } catch (e) {}
   }
   const speak = key => { const l = LINES[key]; if (l) say(l[Math.floor(Math.random() * l.length)]); };
-  const sayGo = n => say(n === 1 ? "고~!" : `${GO_NUM[n] || n} 고~!`);
+  const sayGo = n => say(GO_WORD[n] || `${n}고!`);
 
   // ================= 화면 맞춤 =================
   // 실제로 보이는 높이(메신저 안 브라우저의 주소창·툴바를 뺀 높이)를 재서 카드 크기를 정한다.
@@ -729,9 +731,19 @@
     await sleep(MOVE + 140);
   }
 
+  // 이번 턴에 새로 완성된 족보: 고도리·홍단·청단·초단, 광 3·4·5장
+  function newSets(before, after) {
+    const had = new Set(before.parts.map(p => p[0])), out = [];
+    for (const [nm, key] of [["고도리", "godori"], ["홍단", "hong"], ["청단", "cheong"], ["초단", "cho"]])
+      if (!had.has(nm) && after.parts.some(p => p[0] === nm)) out.push([nm + "!", "", key]);
+    if (after.gN > before.gN && after.gN >= 3) out.push([["", "", "", "삼광", "사광", "오광"][after.gN] + "!", "", "gwang" + after.gN]);
+    return out;
+  }
+
   async function turn(who, A, bomb = false) {
     G.busy = true;
     const events = [];
+    const scoreBefore = score(G.caps[who]);
     let stealN = 0, pendA = null, placedA = false, aCount = 0;
 
     if (A && bomb) {
@@ -786,8 +798,13 @@
     }
     if (G.floor.length === 0 && G.deck.length > 0) { stealN++; events.push(["싹쓸이!", "피 한 장", "sweep"]); }
     const got = stealN ? steal(who, stealN) : 0;
+    events.push(...newSets(scoreBefore, score(G.caps[who])));
     await sweep();
-    for (const [big, small, key] of events) { sfx.event(); speak(key); toast(big, who === ME ? small : "컴퓨터 · " + small); }
+    events.forEach(([big, small, key], i) => {
+      sfx.event();
+      if (i < 2) speak(key);            // 한 턴에 두 마디까지만
+      toast(big, small ? (who === ME ? small : "컴퓨터 · " + small) : (who === ME ? "" : "컴퓨터"));
+    });
     if (got && who === CPU) toast("피를 뺏겼습니다", `${got}장`);
     await sleep(D * 0.5);
     await afterTurn(who);
@@ -1068,7 +1085,7 @@
   $("#btn-sound").onclick = () => {
     sndMode = SND_MODES[(SND_MODES.indexOf(sndMode) + 1) % SND_MODES.length];
     store.set("yangmatgo.snd", sndMode); syncSound();
-    if (sndMode === "all") say("목소리 켰어요~!");
+    if (sndMode === "all") speak("on");
     else if ("speechSynthesis" in window) speechSynthesis.cancel();
   };
   $("#btn-new").onclick = async () => {
