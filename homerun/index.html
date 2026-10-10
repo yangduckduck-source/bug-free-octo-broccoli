@@ -377,6 +377,7 @@
       type, motion, kmh, inZone, tx, ty, rel, flight, seed: rand(0, 6),
       tSet: t0, tLift: t0 + setT, tHold: t0 + setT + lift, tStride: t0 + setT + lift + hold, tRel: t0 + setT + lift + hold + stride,
       swung: false, swingT: 0, result: null, done: false, hit: null, brk: tx < 0 ? -1 : 1,
+      no: G.batters,          // 지금 타석에 선 타자의 등번호 (판정이 나도 다음 공이 올 때까지 그대로)
     };
     P.tArr = P.tRel + flight;
   }
@@ -1160,7 +1161,8 @@
           const m = pr(add(lerp3(p.hip, sc, 0.6), mul(chest, -0.14))), k = m.k;
           x.save(); x.translate(m.x, m.y); x.scale(backVis, 1); x.globalAlpha = clamp((backVis - 0.12) * 3, 0, 1);
           x.fillStyle = "#1f2a5c"; x.font = `900 ${Math.round(0.06 * k)}px sans-serif`; x.textAlign = "center"; x.fillText("YANG", 0, -0.12 * k);
-          x.fillStyle = "#c62f2f"; x.font = `${Math.round(0.19 * k)}px 'Black Han Sans', sans-serif`; x.fillText("10", 0, 0.07 * k);
+          const no = String((P && P.no) || 1);
+          x.fillStyle = "#c62f2f"; x.font = `${Math.round((no.length > 2 ? 0.14 : 0.19) * k)}px 'Black Han Sans', sans-serif`; x.fillText(no, 0, 0.07 * k);
           x.restore();
         }
         // 옆구리 솔기
