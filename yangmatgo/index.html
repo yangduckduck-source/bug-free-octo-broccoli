@@ -8,197 +8,190 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@500;700;900&display=swap">
 <style>
-  /* 레이아웃: 흰 화면 위에 국방색 담요 한 장. 위는 컴퓨터, 가운데 바닥 패, 아래는 내 패. */
+  /* 한 화면에 다 들어가는 판: 머리줄 / 컴퓨터 / 담요(바닥) / 나 / 내 손패.
+     카드 크기는 JS가 실제 화면 높이를 재서 정한다. 메신저 안 브라우저에서도 스크롤 없이. */
   :root {
     color-scheme: light;
-    --page: #ecebe6;          /* 방바닥 장판 같은 밝은 회색 */
+    --page: #ecebe6;
     --panel: #ffffff;
     --ink: #1d1d1f;
     --sub: #5f5f66;
-    --blanket: #5d6744;       /* 국방색 담요 */
-    --blanket-dark: #4b5437;
-    --red: #c8102e;           /* 화투 뒷면의 붉은색 */
+    --blanket: #5d6744;
+    --blanket-dark: #4a5236;
+    --red: #c8102e;
     --blue: #1f5bd6;
     --gold: #ffcc33;
-    --line: rgba(0,0,0,.08);
     --display: "Black Han Sans", "Noto Sans KR", sans-serif;
     --body: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
-
-    --hand-w: clamp(64px, 8.2vw, 100px);
-    --floor-w: clamp(50px, 6.2vw, 78px);
-    --cap-w: clamp(28px, 3vw, 38px);
-  }
-  @media (max-width: 640px) {
-    :root { --hand-w: 16.6vw; --floor-w: 12.4vw; --cap-w: 6.2vw; }
+    --app-h: 100vh;
+    --hand-w: 64px; --floor-w: 50px; --cap-w: 24px; --gap: 8px;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
   body {
     background: var(--page); color: var(--ink);
-    font-family: var(--body); font-size: 18px; line-height: 1.45;
-    -webkit-tap-highlight-color: transparent;
-    padding-inline: 16px; padding-block: 10px 20px;
+    font-family: var(--body); font-size: 17px; line-height: 1.4;
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+    overscroll-behavior: none;
   }
   button { font: inherit; color: inherit; }
-  .wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .app {
+    height: var(--app-h); max-width: 1120px; margin: 0 auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px calc(env(safe-area-inset-bottom, 0px) + 8px);
+    display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; gap: 8px;
+  }
 
-  /* 머리줄 */
-  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; }
-  .brand h1 {
-    margin: 0; font-family: var(--display); font-weight: 400;
-    font-size: clamp(34px, 5vw, 46px); letter-spacing: .02em; color: var(--red); line-height: 1;
-  }
-  .brand span { color: var(--sub); font-size: 16px; font-weight: 700; }
+  header { display: flex; align-items: center; gap: 8px; }
+  header h1 { margin: 0 auto 0 0; font-family: var(--display); font-weight: 400; color: var(--red); font-size: 30px; line-height: 1; }
   .pill {
-    min-height: 48px; padding: 0 18px; border-radius: 999px; border: 0;
-    background: var(--panel); box-shadow: 0 1px 2px rgba(0,0,0,.08);
-    font-weight: 700; font-size: 17px; cursor: pointer;
+    min-height: 40px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--panel);
+    box-shadow: 0 1px 2px rgba(0,0,0,.08); font-weight: 700; font-size: 16px; cursor: pointer; white-space: nowrap;
   }
+  .pill:active { transform: scale(.96); }
   .pill:focus-visible, .card:focus-visible, .big:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
 
-  /* 양쪽 선수 정보 */
-  .side {
-    background: var(--panel); border-radius: 22px; padding: 12px 14px;
-    display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center;
-  }
-  .who { display: flex; flex-direction: column; gap: 4px; min-width: 120px; }
-  .who .name { font-weight: 900; font-size: 18px; }
-  .who .pts { font-family: var(--display); font-size: 40px; line-height: 1; }
-  .who .pts small { font-family: var(--body); font-size: 18px; font-weight: 700; margin-left: 2px; }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; min-height: 28px; }
-  .badge { font-size: 15px; font-weight: 900; padding: 2px 10px; border-radius: 999px; background: #f1f1f3; }
+  /* 양쪽 선수 줄: 이름·점수 | 먹은 패 네 칸 */
+  .bar { background: var(--panel); border-radius: 18px; padding: 6px 8px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: stretch; }
+  .who { display: flex; flex-direction: column; justify-content: center; min-width: 64px; position: relative; }
+  .who .name { font-weight: 900; font-size: 15px; white-space: nowrap; }
+  .who .pts { font-family: var(--display); font-size: 30px; line-height: 1; }
+  .who .pts small { font-family: var(--body); font-size: 15px; font-weight: 700; }
+  .who .badges { display: flex; gap: 4px; flex-wrap: wrap; }
+  .badge { font-size: 12px; font-weight: 900; padding: 1px 7px; border-radius: 999px; }
   .badge.go { background: var(--red); color: #fff; }
   .badge.shake { background: var(--gold); }
-  .caps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
-  .grp { background: #f6f6f7; border-radius: 14px; padding: 6px 8px 8px; min-width: 0; }
-  .grp h3 { margin: 0 0 4px; font-size: 15px; font-weight: 900; display: flex; justify-content: space-between; color: var(--sub); }
-  .grp h3 b { color: var(--ink); font-size: 18px; }
-  .stack { display: flex; flex-wrap: wrap; min-height: calc(var(--cap-w) * 1.5); }
-  .stack .card { width: var(--cap-w); margin-right: calc(var(--cap-w) * -0.45); margin-bottom: 2px; }
-  .who .left { font-weight: 700; color: var(--sub); font-size: 15px; }
-  .cpu-hand { position: absolute; width: 1px; height: 1px; overflow: hidden; left: 30%; top: 0; }  /* 컴퓨터 패가 날아오는 출발점 */
-  .cpu-hand .card { width: 40px; position: absolute; }
+  .caps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; min-width: 0; }
+  .grp { background: #f4f4f5; border-radius: 10px; padding: 3px 5px 4px; min-width: 0; overflow: hidden; }
+  .grp h3 { margin: 0; font-size: 12px; font-weight: 900; color: var(--sub); display: flex; justify-content: space-between; line-height: 1.2; }
+  .grp h3 b { color: var(--ink); font-size: 15px; }
+  .stack { display: flex; flex-wrap: wrap; height: calc(var(--cap-w) * 1.5); overflow: hidden; }
+  .stack .card { width: var(--cap-w); margin-right: calc(var(--cap-w) * -0.55); }
+  .pile { position: relative; width: var(--cap-w); aspect-ratio: 2 / 3; }
+  .pile .card { position: absolute; inset: 0; width: 100%; }
+  .cpu-pile { position: absolute; right: 0; bottom: 2px; }
+  .who.cpu { padding-right: calc(var(--cap-w) + 8px); }
 
-  /* 담요 위 바닥 */
+  /* 담요 */
   .table {
-    position: relative; border-radius: 26px; padding: 18px;
+    position: relative; border-radius: 22px; padding: 10px; min-height: 0; overflow: hidden;
     background:
       repeating-linear-gradient(45deg, rgba(255,255,255,.035) 0 2px, transparent 2px 5px),
       repeating-linear-gradient(-45deg, rgba(0,0,0,.05) 0 2px, transparent 2px 6px),
       radial-gradient(120% 90% at 50% 40%, var(--blanket), var(--blanket-dark));
-    box-shadow: inset 0 0 0 6px rgba(0,0,0,.06);
-    display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center;
-    min-height: calc(var(--floor-w) * 1.5 * 2 + 44px);
+    box-shadow: inset 0 0 0 5px rgba(0,0,0,.06);
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: center;
   }
-  .deck { display: flex; flex-direction: column; align-items: center; gap: 6px; color: #f3f1e6; font-weight: 900; }
-  .deck .pile { position: relative; width: var(--floor-w); aspect-ratio: 2/3; }
-  .deck .pile .card { position: absolute; inset: 0; width: 100%; }
-  .deck .pile .card:nth-child(1) { transform: translate(4px, 4px); }
-  .deck .pile .card:nth-child(2) { transform: translate(2px, 2px); }
-  .floor { display: flex; flex-wrap: wrap; gap: 14px 18px; align-content: center; min-width: 0; }
+  .deck { display: flex; flex-direction: column; align-items: center; gap: 4px; color: #f3f1e6; font-weight: 900; font-size: 14px; }
+  .deck .pile { width: var(--floor-w); }
+  .deck .pile .card:nth-last-child(2) { transform: translate(2px, 2px); }
+  .deck .pile .card:nth-last-child(3) { transform: translate(4px, 4px); }
+  .floor { display: flex; flex-wrap: wrap; gap: 10px 14px; align-content: center; justify-content: center; min-width: 0; max-height: 100%; padding-bottom: 26px; }
   .fgrp { position: relative; display: flex; }
   .fgrp .card { width: var(--floor-w); }
-  .fgrp .card + .card { margin-left: calc(var(--floor-w) * -0.62); }
-  .fgrp .tag {
-    position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
-    background: var(--red); color: #fff; font-weight: 900; font-size: 14px;
-    padding: 1px 9px; border-radius: 999px; white-space: nowrap; z-index: 2;
-  }
+  .fgrp .card + .card { margin-left: calc(var(--floor-w) * -0.6); }
+  .fgrp .tag { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: var(--red); color: #fff; font-weight: 900; font-size: 12px; padding: 0 8px; border-radius: 999px; z-index: 3; }
   .status {
-    position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
-    background: rgba(0,0,0,.42); color: #fff; font-weight: 700; font-size: 17px;
-    padding: 6px 16px; border-radius: 999px; white-space: nowrap; max-width: calc(100% - 24px);
-    overflow: hidden; text-overflow: ellipsis;
+    position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
+    background: rgba(0,0,0,.45); color: #fff; font-weight: 700; font-size: 15px;
+    padding: 3px 14px; border-radius: 999px; white-space: nowrap; max-width: calc(100% - 20px); overflow: hidden; text-overflow: ellipsis; z-index: 4;
   }
 
   /* 내 손패 */
-  .hand { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; min-height: calc(var(--hand-w) * 1.5 + 16px); padding-top: 14px; }
-  .hand .card { width: var(--hand-w); transition: transform .18s ease, box-shadow .18s ease; }
-  .hand.mine .card { cursor: pointer; }
-  .hand .card.match { transform: translateY(-12px); box-shadow: 0 0 0 4px var(--gold), 0 10px 20px rgba(0,0,0,.18); border-radius: 10px; }
-  .hand.mine .card:hover { transform: translateY(-14px); }
-  .hand.wait .card { filter: saturate(.75) brightness(.97); }
+  .hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px var(--gap); margin: 0 auto; padding-top: 10px; }   /* 줄 간격: 솟은 패가 윗줄 글씨를 가리지 않게 */
+  .hand .card { width: var(--hand-w); cursor: pointer; }
+  .hand .card.match { transform: translateY(-9px); }
+  .hand .card.match .front { box-shadow: 0 0 0 3px var(--gold), 0 8px 16px rgba(0,0,0,.2); }
+  .hand.wait .card { cursor: default; }
 
-  .card { display: block; padding: 0; border: 0; background: none; aspect-ratio: 2/3; border-radius: 10px; }
-  .card svg { display: block; width: 100%; height: 100%; filter: drop-shadow(0 1px 1.5px rgba(0,0,0,.28)); }
+  /* 카드: 앞면·뒷면 두 겹, 뒤집힐 때 실제로 돈다 */
+  .card { position: relative; display: block; aspect-ratio: 2 / 3; perspective: 600px; transition: transform .16s ease; }
+  .card .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .42s cubic-bezier(.3,.7,.2,1); }
+  .card.down .inner { transform: rotateY(180deg); }
+  .card .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 8%/5.5%; box-shadow: 0 1px 2px rgba(0,0,0,.35); overflow: hidden; }
+  .card .back { transform: rotateY(180deg); }
+  .card .face > svg { display: block; width: 100%; height: 100%; }   /* 바깥 svg만. 안쪽 그림 svg는 제 크기 그대로 */
+  .hand .card:active { transform: scale(.95); }
 
-  .foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: var(--sub); font-size: 15px; }
-  .foot a { color: var(--sub); }
+  .dust { position: fixed; width: 6px; height: 6px; border-radius: 50%; background: rgba(240,236,220,.85); pointer-events: none; z-index: 60; }
 
-  /* 알림 */
   .toast {
-    position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(.9);
-    background: var(--panel); color: var(--red); font-family: var(--display); font-size: clamp(40px, 9vw, 72px);
-    padding: 14px 34px; border-radius: 28px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
-    opacity: 0; pointer-events: none; transition: opacity .18s ease, transform .18s ease; z-index: 30; text-align: center; line-height: 1.1;
+    position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%);
+    background: var(--panel); color: var(--red); font-family: var(--display); font-size: clamp(40px, 11vw, 72px);
+    padding: 12px 30px; border-radius: 26px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
+    opacity: 0; pointer-events: none; z-index: 70; text-align: center; line-height: 1.1; white-space: nowrap;
   }
-  .toast small { display: block; font-family: var(--body); font-size: 18px; font-weight: 700; color: var(--ink); margin-top: 6px; }
-  .toast.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .toast small { display: block; font-family: var(--body); font-size: 17px; font-weight: 700; color: var(--ink); margin-top: 4px; }
 
-  /* 대화상자 */
-  .modal {
-    position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
-    background: rgba(20,20,22,.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); padding: 16px;
-  }
-  .sheet {
-    background: var(--panel); border-radius: 28px; padding: 24px; width: min(520px, 100%);
-    box-shadow: 0 30px 70px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 14px;
-    max-height: calc(100vh - 32px); overflow: auto;
-  }
-  .sheet h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 36px; line-height: 1.1; text-wrap: balance; }
-  .sheet p { margin: 0; font-size: 19px; color: var(--ink); }
-  .sheet .row { display: flex; gap: 12px; }
-  .big {
-    flex: 1; min-height: 64px; border-radius: 18px; border: 0; cursor: pointer;
-    font-size: 24px; font-weight: 900; background: #f1f1f3;
-  }
+  .modal { position: fixed; inset: 0; z-index: 80; display: flex; align-items: center; justify-content: center; background: rgba(20,20,22,.35); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); padding: 16px; }
+  .sheet { background: var(--panel); border-radius: 26px; padding: 22px; width: min(520px, 100%); box-shadow: 0 30px 70px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 12px; max-height: calc(var(--app-h) - 32px); overflow: auto; }
+  .sheet h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 32px; line-height: 1.1; }
+  .sheet p { margin: 0; font-size: 18px; }
+  .sheet .row { display: flex; gap: 10px; }
+  .big { flex: 1; min-height: 60px; border-radius: 16px; border: 0; cursor: pointer; font-size: 22px; font-weight: 900; background: #f1f1f3; }
+  .big:active { transform: scale(.97); }
   .big.red { background: var(--red); color: #fff; }
   .big.dark { background: var(--ink); color: #fff; }
   .picks { display: flex; gap: 16px; justify-content: center; }
-  .picks .card { width: min(130px, 38vw); cursor: pointer; }
-  .tbl { width: 100%; border-collapse: collapse; font-size: 19px; font-variant-numeric: tabular-nums; }
-  .tbl td { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .picks .card { width: min(120px, 36vw); cursor: pointer; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .tbl td { padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,.08); }
   .tbl td:last-child { text-align: right; font-weight: 900; }
-  .tbl tr.sum td { border-bottom: 0; font-size: 24px; padding-top: 10px; }
-  .rules { margin: 0; padding-left: 1.1em; font-size: 18px; display: grid; gap: 6px; }
+  .tbl tr.sum td { border-bottom: 0; font-size: 22px; padding-top: 8px; }
+  .rules { margin: 0; padding-left: 1.1em; font-size: 17px; display: grid; gap: 5px; }
   .rules b { color: var(--red); }
+  .sheet .small { font-size: 15px; color: var(--sub); }
+  .sheet a { color: var(--sub); }
 
-  @media (max-width: 640px) {
-    body { font-size: 17px; padding-block: 8px 16px; }
-    .wrap { gap: 10px; }
-    .brand span { display: none; }
-    .pill { min-height: 44px; padding: 0 14px; font-size: 16px; }
-    .side { grid-template-columns: 1fr; padding: 10px; gap: 8px; border-radius: 18px; }
-    .who { flex-direction: row; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
-    .who .pts { font-size: 32px; }
-    .caps { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
-    .grp { padding: 4px 6px 6px; border-radius: 10px; }
-    .grp h3 { font-size: 13px; }
-    .grp h3 b { font-size: 16px; }
-    .table { padding: 12px 10px 48px; gap: 10px; border-radius: 20px; }
-    .deck { font-size: 15px; }
-    .floor { gap: 10px 12px; }
-    .hand { gap: 18px 6px; padding-top: 12px; }   /* 솟은 패가 윗줄 글씨를 가리지 않게 */
+  @media (min-width: 900px) and (min-height: 700px) {
+    header h1 { font-size: 40px; }
+    .pill { min-height: 46px; font-size: 17px; }
+    .who { min-width: 110px; }
+    .who .name { font-size: 17px; }
+    .who .pts { font-size: 40px; }
+    .grp h3 { font-size: 14px; }
+    .grp h3 b { font-size: 18px; }
+    .status { font-size: 17px; }
   }
-  @media (prefers-reduced-motion: reduce) { .toast, .hand .card { transition: none; } }
+  header { grid-area: head; } .bar.cpu { grid-area: cpu; } .table { grid-area: table; } .bar.me { grid-area: me; } .hand { grid-area: hand; }
+  .app { grid-template-areas: "head" "cpu" "table" "me" "hand"; }
+  @media (orientation: landscape) and (max-height: 560px) {
+    .app { grid-template-columns: minmax(0, 1fr) minmax(200px, 30%); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr) auto;
+           grid-template-areas: "head head" "table cpu" "table me" "hand hand"; gap: 6px; padding-top: calc(env(safe-area-inset-top, 0px) + 4px); }
+    header h1 { font-size: 24px; } .pill { min-height: 34px; font-size: 14px; padding: 0 12px; }
+    .bar { grid-template-columns: 1fr; align-content: start; padding: 6px; }
+    .who { flex-direction: row; align-items: baseline; gap: 8px; }
+    .who .pts { font-size: 24px; }
+    .caps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+    .hand { padding-top: 4px; }
+  }
+  @media (orientation: portrait) {
+    .who { flex-direction: row; flex-wrap: wrap; align-items: baseline; align-content: center; column-gap: 6px; min-width: 0; max-width: 40vw; }
+    .who .name { white-space: normal; }
+    .who .pts { font-size: 26px; }
+  }
+  @media (orientation: landscape) and (max-height: 560px) {
+    .caps { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grp h3 { flex-direction: column; } .grp h3 b { font-size: 14px; }
+    .who.cpu { padding-right: calc(var(--cap-w) + 8px); }
+  }
+  @media (prefers-reduced-motion: reduce) { .card .inner, .card { transition: none; } }
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="app" id="app">
   <header>
-    <div class="brand"><h1>양맞고</h1><span>1 : 1 고스톱</span></div>
+    <h1>양맞고</h1>
     <button class="pill" id="btn-rules" type="button">규칙</button>
-    <button class="pill" id="btn-sound" type="button">소리 켬</button>
+    <button class="pill" id="btn-sound" type="button">소리</button>
     <button class="pill" id="btn-new" type="button">새 판</button>
   </header>
 
-  <section class="side" aria-label="컴퓨터" style="position:relative">
-    <div class="cpu-hand" id="cpu-hand" aria-hidden="true"></div>
-    <div class="who">
-      <div class="name">컴퓨터 <span class="left" id="cpu-left"></span></div>
+  <section class="bar cpu" aria-label="컴퓨터">
+    <div class="who cpu">
+      <div class="name">컴퓨터 <span id="cpu-left"></span></div>
       <div class="pts"><span id="cpu-pts">0</span><small>점</small></div>
       <div class="badges" id="cpu-badges"></div>
+      <div class="pile cpu-pile" id="cpu-hand" aria-hidden="true"></div>
     </div>
     <div class="caps" id="cpu-caps"></div>
   </section>
@@ -209,7 +202,7 @@
     <div class="status" id="status" role="status">준비</div>
   </section>
 
-  <section class="side" aria-label="나">
+  <section class="bar me" aria-label="나">
     <div class="who">
       <div class="name">나</div>
       <div class="pts"><span id="me-pts">0</span><small>점</small></div>
@@ -219,8 +212,6 @@
   </section>
 
   <section class="hand" id="hand" aria-label="내 손패"></section>
-
-  <div class="foot"><span id="record">전적 0승 0패</span><a href="../">게임 목록</a></div>
 </div>
 
 <div class="toast" id="toast" aria-live="assertive"></div>
@@ -232,6 +223,7 @@
   const $ = s => document.querySelector(s);
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
@@ -241,17 +233,17 @@
   // ================= 화투 48장 =================
   const CARDS = [];
   const add = (m, kind, x = {}) => CARDS.push({ id: CARDS.length, m, kind, pi: kind === "pi" ? 1 : 0, ...x });
-  add(1, "gwang", { nm: "학" });     add(1, "tti", { rib: "hong" });   add(1, "pi");  add(1, "pi", { alt: 1 });
+  add(1, "gwang");                    add(1, "tti", { rib: "hong" });   add(1, "pi");  add(1, "pi", { alt: 1 });
   add(2, "yeol", { godori: 1 });      add(2, "tti", { rib: "hong" });   add(2, "pi");  add(2, "pi", { alt: 1 });
-  add(3, "gwang", { nm: "만막" });   add(3, "tti", { rib: "hong" });   add(3, "pi");  add(3, "pi", { alt: 1 });
+  add(3, "gwang");                    add(3, "tti", { rib: "hong" });   add(3, "pi");  add(3, "pi", { alt: 1 });
   add(4, "yeol", { godori: 1 });      add(4, "tti", { rib: "cho" });    add(4, "pi");  add(4, "pi", { alt: 1 });
   add(5, "yeol");                     add(5, "tti", { rib: "cho" });    add(5, "pi");  add(5, "pi", { alt: 1 });
   add(6, "yeol");                     add(6, "tti", { rib: "cheong" }); add(6, "pi");  add(6, "pi", { alt: 1 });
   add(7, "yeol");                     add(7, "tti", { rib: "cho" });    add(7, "pi");  add(7, "pi", { alt: 1 });
-  add(8, "gwang", { nm: "달" });     add(8, "yeol", { godori: 1 });    add(8, "pi");  add(8, "pi", { alt: 1 });
+  add(8, "gwang");                    add(8, "yeol", { godori: 1 });    add(8, "pi");  add(8, "pi", { alt: 1 });
   add(9, "yeol", { gukjin: 1 });      add(9, "tti", { rib: "cheong" }); add(9, "pi");  add(9, "pi", { alt: 1 });
   add(10, "yeol");                    add(10, "tti", { rib: "cheong" });add(10, "pi"); add(10, "pi", { alt: 1 });
-  add(11, "gwang", { nm: "봉황" });  add(11, "pi", { pi: 2, ssang: 1 });add(11, "pi"); add(11, "pi", { alt: 1 });
+  add(11, "gwang");                   add(11, "pi", { pi: 2, ssang: 1 });add(11, "pi"); add(11, "pi", { alt: 1 });
   add(12, "gwang", { bi: 1 });        add(12, "yeol");                  add(12, "tti", { rib: "bi" }); add(12, "pi", { pi: 2, ssang: 1 });
 
   const RIB = { hong: "홍단", cheong: "청단", cho: "초단", bi: "띠" };
@@ -263,145 +255,192 @@
   }
   const nameOf = c => `${c.m}월 ${label(c)}`;
 
-  // ================= 카드 그림 (SVG) =================
-  // 화투를 그대로 옮기기보다, 멀리서도 알아보게 단순하게 그린다.
-  // 왼쪽 위에 월 숫자, 아래 띠에 패 종류를 큰 글씨로 적는다.
-  const P = {
-    paper: "#f7f0df", ink: "#1f1f1f", red: "#d7262e", pink: "#f2a5b8", green: "#2c6e3f",
-    dgreen: "#1d4d2c", brown: "#7a4a25", yellow: "#f2c230", purple: "#5b3f99", blue: "#2a5bd7", sky: "#e9dcc0",
+  // ================= 화투 그림 =================
+  // 실제 화투의 구도와 색(붉은 해·장막·달, 검은 싸리, 비광의 우산)을 따르되
+  // 왼쪽 위 월 숫자와 아래 글자 띠로 한눈에 읽히게 한다. 그림 영역 좌표계는 100 × 128.
+  const O = "#151515", RED = "#cf1f2b", RED2 = "#e8473f", PAPER = "#f6eedb", GREEN = "#1f5c34", GREEN2 = "#2f7a44",
+        BLACK = "#1b1b1b", YEL = "#f3c623", PURP = "#5a3d98", BLUE = "#2456c9", BROWN = "#6b3f1f", WHITE = "#fffdf6";
+  const R = (x, y, w, h, f, ex = "") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" ${ex}/>`;
+  const C = (x, y, r, f, ex = "") => `<circle cx="${x}" cy="${y}" r="${r}" fill="${f}" ${ex}/>`;
+  const E = (x, y, rx, ry, f, rot = 0, ex = "") => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}" transform="rotate(${rot} ${x} ${y})" ${ex}/>`;
+  const Pt = (d, f, s = "none", w = 0, ex = "") => `<path d="${d}" fill="${f}" stroke="${s}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${ex}/>`;
+  const T = (x, y, t, size, f, ex = "") => `<text x="${x}" y="${y}" font-size="${size}" fill="${f}" font-weight="900" text-anchor="middle" font-family="Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif" ${ex}>${t}</text>`;
+  const ol = `stroke="${O}" stroke-width="1.3"`;
+
+  const cloudBand = (y, col = RED) => Pt(`M0 ${y} Q12 ${y - 8} 24 ${y} T48 ${y} T72 ${y} T96 ${y} L100 ${y} V128 H0Z`, col, O, 1.2);
+  const pineClump = (x, y, s) => Pt(`M${x - 20 * s} ${y} Q${x - 14 * s} ${y - 16 * s} ${x} ${y - 18 * s} Q${x + 14 * s} ${y - 16 * s} ${x + 20 * s} ${y} Z`, GREEN, O, 1.4) +
+    [-12, -6, 0, 6, 12].map(d => Pt(`M${x} ${y} L${x + d * s} ${y - 14 * s}`, "none", "#0f3a1f", 1)).join("");
+  const plum = (x, y, r = 6) => [0, 1, 2, 3, 4].map(i => C(x + Math.cos(i * 1.2566 - 1.57) * r * 0.55, y + Math.sin(i * 1.2566 - 1.57) * r * 0.55, r * 0.5, RED, ol)).join("") + C(x, y, r * 0.28, YEL);
+  const blossom = (x, y, r) => [0, 1, 2, 3, 4].map(i => C(x + Math.cos(i * 1.2566) * r * 0.55, y + Math.sin(i * 1.2566) * r * 0.55, r * 0.5, "#fbe3ea", `stroke="${RED}" stroke-width="1"`)).join("") + C(x, y, r * 0.22, RED);
+  const strand = (x, len, leaf, flower) => {
+    let s = Pt(`M${x} 0 Q${x + 5} ${len / 2} ${x - 2} ${len}`, "none", O, 1.6);
+    for (let y = 8; y < len; y += 9) s += E(x - 4 + (y % 18 ? 0 : 1), y, 5, 2.4, leaf, 35, `stroke="${O}" stroke-width=".6"`) + E(x + 4, y + 4, 5, 2.4, leaf, -35, `stroke="${O}" stroke-width=".6"`);
+    if (flower) for (let y = 14; y < len; y += 18) s += C(x + 1, y, 2, flower);
+    return s;
   };
-  const ci = (x, y, r, f, extra = "") => `<circle cx="${x}" cy="${y}" r="${r}" fill="${f}" ${extra}/>`;
-  const el = (x, y, rx, ry, f, rot = 0, extra = "") => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}" transform="rotate(${rot} ${x} ${y})" ${extra}/>`;
-  const pa = (d, f, s = "none", w = 0, extra = "") => `<path d="${d}" fill="${f}" stroke="${s}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${extra}/>`;
-  const tx = (x, y, t, size, f, w = 900, extra = "") => `<text x="${x}" y="${y}" font-size="${size}" fill="${f}" font-weight="${w}" text-anchor="middle" font-family="Noto Sans KR, Apple SD Gothic Neo, sans-serif" ${extra}>${t}</text>`;
-  const bird = (x, y, body, s = 1, flip = 1) =>
-    `<g transform="translate(${x} ${y}) scale(${s * flip} ${s})">${el(0, 0, 13, 7, body)}${ci(11, -5, 5, body)}${pa("M15 -6 L21 -4 L15 -2Z", P.yellow)}${pa("M-4 -3 Q-14 -16 4 -10Z", body, P.ink, 1)}${pa("M-12 0 L-20 -4 L-18 3Z", body)}${ci(12, -6, 1.2, P.ink)}</g>`;
-  const star = (x, y, r, f) => {
+  const maple = (x, y, r, f = RED) => {
     let d = "";
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r;
+    for (let i = 0; i < 14; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 7, rr = i % 2 ? r * 0.45 : r;
       d += (i ? "L" : "M") + (x + Math.cos(a) * rr).toFixed(1) + " " + (y + Math.sin(a) * rr).toFixed(1);
     }
-    return pa(d + "Z", f);
+    return Pt(d + "Z", f, O, 1);
+  };
+  const mum = (x, y, r) => {
+    let s = "";
+    for (let i = 0; i < 14; i++) s += E(x + Math.cos(i * 0.4488) * r * 0.62, y + Math.sin(i * 0.4488) * r * 0.62, r * 0.42, r * 0.16, YEL, i * 25.7, `stroke="${O}" stroke-width=".6"`);
+    return s + C(x, y, r * 0.32, RED, ol);
+  };
+  const peony = (x, y, r) => C(x, y, r, RED, ol) + Pt(`M${x - r * 0.7} ${y} Q${x} ${y - r * 0.9} ${x + r * 0.7} ${y}`, "none", "#8f0f17", 1.4) +
+    Pt(`M${x - r * 0.5} ${y + r * 0.35} Q${x} ${y - r * 0.3} ${x + r * 0.5} ${y + r * 0.35}`, "none", "#8f0f17", 1.4) + C(x, y + r * 0.1, r * 0.25, "#f6b0b5");
+  const ribbon = rib => {
+    const col = rib === "cheong" ? BLUE : RED;
+    let s = `<g transform="rotate(-8 50 70)">` + R(37, 18, 26, 84, col, `rx="2" ${ol}`) + Pt("M37 102 L44 110 L50 102 L56 110 L63 102", col, O, 1.3);
+    if (rib === "bi") s += R(37, 44, 26, 5, BLACK) + R(37, 70, 26, 5, BLACK);
+    else if (rib !== "cho") s += T(50, 50, RIB[rib][0], 17, "#fff") + T(50, 74, RIB[rib][1], 17, "#fff");
+    return s + "</g>";
   };
 
-  function scene(c) {
-    const m = c.m, sp = c.kind !== "pi" && c.kind !== "tti";
-    let s = "";
-    switch (m) {
-      case 1: // 송학
-        if (c.kind === "gwang") s += ci(70, 30, 17, P.red);
-        s += pa("M47 116 L51 62 L56 116Z", P.brown);
-        s += el(50, 66, 32, 11, P.dgreen) + el(36, 50, 22, 9, P.green) + el(64, 40, 22, 8, P.dgreen);
-        if (c.kind === "gwang") s += el(34, 92, 15, 8, "#fff", 0, `stroke="${P.ink}" stroke-width="1.5"`) + pa("M44 88 Q54 70 46 62", "none", P.ink, 2.5) + ci(46, 61, 3.5, P.red);
+  function art(c) {
+    const g = c.kind === "gwang", y = c.kind === "yeol", p = c.kind === "pi";
+    let s = R(0, 0, 100, 128, PAPER);
+    switch (c.m) {
+      case 1: // 송학: 붉은 해, 소나무, 학, 아래 붉은 구름
+        if (g) s += C(70, 34, 26, RED, ol);
+        s += cloudBand(108);
+        s += Pt("M10 128 C22 100 34 84 70 62", "none", "#3b2416", 9) + Pt("M40 90 C50 70 54 50 50 30", "none", "#3b2416", 5);
+        s += pineClump(64, 62, 1.1) + pineClump(46, 36, 0.9) + pineClump(28, 76, 0.85) + pineClump(84, 80, 0.75);
+        if (g) s += E(36, 104, 20, 10, WHITE, -10, ol) + Pt("M20 100 L8 96 L18 108Z", BLACK) + Pt("M50 100 C58 86 60 72 56 60", "none", BLACK, 4) +
+                    C(56, 58, 4.5, WHITE, ol) + C(56, 54.5, 2.6, RED) + Pt("M60 58 L70 61", "none", O, 2) + Pt("M32 112 L30 126 M40 112 L42 126", "none", O, 1.6);
         break;
-      case 2: // 매조
-        s += pa("M8 104 Q40 74 92 30", "none", P.brown, 5);
-        for (const [x, y] of [[24, 88], [44, 70], [62, 56], [82, 38], [34, 62], [72, 74]]) s += ci(x, y, 7, P.red) + ci(x, y, 2.2, "#fff");
-        if (sp) s += bird(52, 96, "#9aa43a");
+      case 2: // 매조: 검은 매화 가지, 붉은 꽃, 꾀꼬리
+        s += cloudBand(112, RED2);
+        s += Pt("M8 124 L26 96 L22 74 L44 56 L42 34 L64 18 L80 4", "none", BLACK, 6) + Pt("M44 56 L70 60 L88 48", "none", BLACK, 4);
+        for (const [x, yy] of [[26, 96], [22, 74], [44, 56], [42, 34], [64, 18], [70, 60], [88, 48], [80, 6], [34, 84]]) s += plum(x, yy, 9);
+        if (y) s += `<g transform="translate(58 86)">` + E(0, 0, 13, 7.5, "#a7a234", -15, ol) + C(11, -6, 5.5, "#a7a234", ol) + Pt("M15 -7 L22 -5 L15 -3Z", YEL, O, .8) +
+                    Pt("M-4 -3 Q-12 -16 6 -9Z", "#7f7d21", O, 1) + Pt("M-12 2 L-22 0 L-18 7Z", "#7f7d21", O, 1) + C(12, -7, 1.3, O) + `</g>`;
         break;
-      case 3: // 벚꽃
-        s += pa("M20 116 Q30 70 50 40", "none", P.brown, 5);
-        for (const [x, y] of [[30, 30], [52, 24], [70, 36], [40, 46], [62, 52], [80, 22], [22, 52]]) s += ci(x, y, 10, P.pink) + ci(x, y, 4, "#f7c9d5");
-        if (c.kind === "gwang") {
-          for (let i = 0; i < 7; i++) s += `<rect x="${14 + i * 11}" y="70" width="11" height="38" fill="${i % 2 ? "#fff" : P.red}"/>`;
-          s += pa("M12 70 Q50 62 90 70", "none", P.ink, 2);
+      case 3: // 벚꽃: 꽃구름, 광은 붉은 장막
+        if (g) {
+          s += R(0, 62, 100, 66, RED, ol);
+          for (let i = 0; i < 5; i++) s += R(2 + i * 20, 62, 8, 66, "#f2e3c7");
+          for (const [x, yy] of [[20, 90], [60, 100], [80, 78], [40, 114]]) s += C(x, yy, 7, WHITE, ol) + C(x, yy, 3, RED);
+          s += Pt("M0 62 Q50 52 100 62", "none", O, 2.4) + Pt("M10 58 L10 66 M50 54 L50 62 M90 58 L90 66", "none", O, 2);
+        } else s += cloudBand(104, RED2);
+        s += Pt("M6 70 Q30 50 48 26", "none", BLACK, 4);
+        for (const [x, yy, r] of [[18, 20, 11], [38, 14, 12], [58, 22, 11], [78, 16, 12], [28, 38, 10], [50, 40, 11], [72, 38, 10], [90, 34, 9], [12, 48, 9]]) s += blossom(x, yy, r);
+        break;
+      case 4: // 흑싸리: 늘어진 검은 잎, 두견새와 초승달
+        if (y) s += R(0, 0, 100, 128, "#e8d7b5") + Pt("M70 10 A16 16 0 1 0 86 34 A12 12 0 1 1 70 10Z", YEL, O, 1.2);
+        for (const x of [12, 30, 48, 66, 84]) s += strand(x, y ? 70 : 100, BLACK, RED);
+        if (!y) s += cloudBand(112, RED2);
+        if (y) s += `<g transform="translate(46 96)">` + E(0, 0, 18, 6, BLACK, -8) + Pt("M-6 -2 Q4 -24 20 -16 Q8 -8 4 0Z", BLACK) + Pt("M-6 2 Q2 18 18 16 Q8 8 2 2Z", BLACK) +
+                    C(18, -3, 5, BLACK) + E(4, 4, 8, 3, RED, -8) + Pt("M22 -3 L28 -1", "none", YEL, 2) + Pt("M-16 0 L-28 -6 L-26 4Z", BLACK) + `</g>`;
+        break;
+      case 5: // 난초(창포): 긴 잎, 보라 꽃, 열끗은 나무다리
+        for (const [x, b] of [[14, -4], [26, 6], [40, -2], [54, 8], [68, -6], [82, 4], [92, -2]]) s += Pt(`M${x} 128 Q${x + b} 80 ${x + b * 2} 26`, "none", GREEN, 3.2);
+        for (const [x, yy] of [[24, 30], [52, 22], [78, 30], [38, 50], [66, 48]]) s += E(x - 5, yy, 8, 4, PURP, -35, ol) + E(x + 5, yy, 8, 4, PURP, 35, ol) + E(x, yy - 7, 4, 8, "#7c5fc4", 0, ol) + C(x, yy, 1.8, YEL);
+        if (y) s += Pt("M0 104 L30 88 L56 104 L86 88 L100 96 L100 110 L86 102 L56 118 L30 102 L0 118Z", "#a8743c", O, 1.4) + Pt("M15 96 L15 112 M43 96 L43 112 M71 96 L71 112", "none", O, 1);
+        break;
+      case 6: // 모란: 붉은 꽃 두 송이, 검푸른 잎, 열끗은 나비
+        for (const [x, yy, r] of [[22, 92, 14], [80, 96, 14], [52, 110, 12], [12, 64, 10], [88, 66, 10]]) s += E(x, yy, r, r * 0.45, GREEN, x < 50 ? -30 : 30, ol);
+        s += peony(36, 74, 17) + peony(68, 82, 15);
+        if (y) for (const [x, yy, f] of [[30, 26, YEL], [72, 34, "#3c7fd6"]]) s += E(x - 7, yy - 3, 8, 11, f, -25, ol) + E(x + 7, yy - 3, 8, 11, f, 25, ol) + E(x - 5, yy + 8, 5, 6, f, 20, ol) + E(x + 5, yy + 8, 5, 6, f, -20, ol) + E(x, yy + 2, 1.8, 10, O);
+        break;
+      case 7: // 홍싸리: 붉은 잎 가지, 열끗은 멧돼지
+        for (const x of [10, 28, 46, 64, 82]) s += strand(x, y ? 76 : 104, RED, null);
+        if (!y) s += cloudBand(114, "#8b1a1a");
+        if (y) s += `<g transform="translate(50 104)">` + E(0, 0, 26, 12, "#5a3a20", 0, ol) + E(24, -4, 10, 8, "#5a3a20", 15, ol) + Pt("M31 -2 L38 2", "none", WHITE, 2) + C(26, -7, 1.5, O) +
+                    R(-18, 8, 5, 12, "#3d2814") + R(-6, 8, 5, 12, "#3d2814") + R(8, 8, 5, 12, "#3d2814") + Pt("M-22 -12 L-10 -14 L2 -12 L14 -14", "none", O, 1.5) + `</g>`;
+        break;
+      case 8: { // 공산: 검은 언덕과 억새, 광은 붉은 하늘에 흰 달, 열끗은 기러기
+        if (g) s += R(0, 0, 100, 128, RED) + C(50, 38, 26, WHITE, ol);
+        else if (y) s += R(0, 0, 100, 70, "#f3d36b");
+        s += Pt("M0 128 L0 82 Q50 40 100 82 L100 128Z", BLACK);
+        for (let x = 10; x < 92; x += 7) s += Pt(`M${x} 126 Q${x + 3} 100 ${x + 8} ${74 + Math.abs(50 - x) * 0.5}`, "none", "#f5f0e2", 1.3);
+        if (y) for (const [x, yy] of [[28, 26], [52, 16], [74, 28]]) s += Pt(`M${x - 11} ${yy + 2} Q${x - 5} ${yy - 7} ${x} ${yy} Q${x + 5} ${yy - 7} ${x + 11} ${yy + 2}`, "none", O, 3.4) + E(x, yy + 1, 3, 2, O);
+        break;
+      }
+      case 9: // 국화: 노란 꽃, 열끗(국진)은 붉은 술잔
+        s += E(24, 104, 16, 7, GREEN, -25, ol) + E(76, 106, 16, 7, GREEN, 25, ol) + E(50, 116, 14, 6, GREEN2, 0, ol);
+        s += mum(30, 40, 20) + mum(70, 54, 18) + mum(46, 84, 15);
+        if (y) s += Pt("M30 92 L70 92 L62 116 L38 116Z", RED, O, 1.4) + E(50, 92, 20, 5, "#ef5a4f", 0, ol) + R(44, 116, 12, 6, RED, ol) + T(50, 110, "壽", 14, YEL);
+        break;
+      case 10: // 단풍: 붉은 잎, 열끗은 사슴
+        s += Pt("M0 30 Q40 40 60 20 M60 20 L90 8 M40 34 L50 60", "none", BLACK, 3);
+        for (const [x, yy, r] of [[16, 22, 12], [40, 16, 11], [62, 30, 12], [86, 18, 11], [30, 48, 11], [54, 58, 12], [80, 52, 11], [16, 74, 10], [70, 78, 10]]) s += maple(x, yy, r);
+        if (y) s += `<g transform="translate(46 100)">` + E(0, 0, 22, 10, "#b5733a", 0, ol) + E(22, -14, 7, 9, "#b5733a", -20, ol) + C(24, -16, 1.4, O) +
+                    Pt("M20 -22 L14 -34 M16 -28 L10 -30 M26 -22 L32 -34 M30 -28 L36 -30", "none", BROWN, 2) +
+                    R(-16, 8, 4, 18, "#7a4a22") + R(-6, 8, 4, 18, "#7a4a22") + R(8, 8, 4, 18, "#7a4a22") + R(15, 8, 4, 18, "#7a4a22") +
+                    C(-6, -3, 2, WHITE) + C(4, 2, 2, WHITE) + C(-12, 3, 1.6, WHITE) + `</g>`;
+        break;
+      case 11: // 오동: 큰 검은 잎, 꽃대, 광은 봉황, 쌍피는 노란 바닥
+        if (c.ssang) s += R(0, 84, 100, 44, YEL) + Pt("M0 84 Q50 74 100 84", "none", O, 1.2);
+        s += Pt("M20 30 Q4 18 8 6 Q22 2 30 16 Q34 0 50 2 Q62 6 56 22 Q72 10 84 16 Q94 30 76 38 Q56 44 40 40 Q26 44 20 30Z", BLACK);
+        s += Pt("M50 40 L50 70", "none", BLACK, 3) + E(50, 54, 6, 12, PURP, 0, ol) + C(50, 44, 4, YEL, ol);
+        if (g) s += `<g transform="translate(48 94)">` + E(0, 0, 18, 10, RED, -10, ol) + C(16, -12, 6, "#2f8f5b", ol) + Pt("M20 -14 L28 -12 L20 -9Z", YEL, O, .8) +
+                    Pt("M-14 -2 Q-36 -20 -44 4 Q-30 0 -16 6Z", "#2f8f5b", O, 1) + Pt("M-14 4 Q-34 14 -42 30 Q-22 20 -10 10Z", YEL, O, 1) + Pt("M-8 8 Q-14 24 -4 34 Q0 22 0 10Z", "#3c7fd6", O, 1) + `</g>`;
+        else if (!c.ssang) s += Pt("M14 128 Q30 100 50 96 Q70 100 86 128Z", "#3a3a3a");
+        break;
+      case 12: // 비: 버드나무, 비광은 우산 쓴 선비와 개구리, 열끗은 제비, 쌍피는 천둥
+        if (c.ssang) {
+          s += R(0, 0, 100, 128, RED);
+          s += Pt("M10 40 Q30 14 56 26 Q80 36 90 20 L96 50 Q74 64 52 52 Q30 42 16 70Z", BLACK);
+          s += Pt("M24 82 L40 70 L36 86 L56 74 L50 94 L70 82", "none", YEL, 4) + C(70, 104, 14, BLACK) + C(70, 104, 6, RED);
+          break;
         }
-        break;
-      case 4: // 흑싸리
-        for (const x of [22, 42, 62, 80]) {
-          s += pa(`M${x} 6 Q${x + 6} 40 ${x - 2} 80`, "none", P.ink, 2);
-          for (let y = 14; y < 80; y += 11) s += el(x + Math.sin(y) * 3, y, 4.5, 2.2, P.ink, 30);
-        }
-        if (sp) s += bird(50, 98, P.ink, 1.05) + el(48, 101, 8, 3, P.red);
-        break;
-      case 5: // 난초
-        for (const [x, r] of [[20, -8], [40, 4], [60, -4], [80, 8]]) s += pa(`M${x} 116 Q${x + r} 70 ${x + r * 2} 30`, "none", P.green, 3);
-        for (const [x, y] of [[36, 36], [62, 30], [50, 48]]) s += el(x - 5, y, 9, 5, P.purple, -30) + el(x + 5, y, 9, 5, P.purple, 30) + el(x, y - 6, 5, 8, "#7b5fc0");
-        if (sp) s += pa("M4 102 L26 86 L50 102 L74 86 L96 102", "none", P.brown, 7) + pa("M4 102 L26 86 L50 102 L74 86 L96 102", "none", "#c9a36a", 2);
-        break;
-      case 6: // 모란
-        s += el(26, 80, 18, 9, P.green, -30) + el(74, 82, 18, 9, P.green, 30) + el(50, 92, 16, 8, P.dgreen);
-        s += ci(50, 58, 24, P.red) + ci(50, 58, 15, "#f05a6a") + ci(50, 58, 6, "#ffd0d6");
-        if (sp) for (const [x, y, f] of [[22, 24, P.yellow], [78, 28, P.blue]]) s += el(x - 6, y, 7, 10, f, -25) + el(x + 6, y, 7, 10, f, 25) + el(x, y, 1.6, 8, P.ink);
-        break;
-      case 7: // 홍싸리
-        for (const x of [20, 40, 60, 80]) {
-          s += pa(`M${x} 6 Q${x - 6} 40 ${x + 2} 76`, "none", P.red, 2);
-          for (let y = 14; y < 76; y += 10) s += el(x + Math.cos(y) * 3, y, 4.5, 2.2, P.red, -30);
-        }
-        if (sp) s += el(50, 98, 24, 11, "#6b4a2b") + el(72, 94, 9, 7, "#6b4a2b") + `<rect x="34" y="104" width="4" height="10" fill="#4a321c"/><rect x="60" y="104" width="4" height="10" fill="#4a321c"/>` + ci(76, 92, 1.5, P.ink);
-        break;
-      case 8: // 공산
-        if (c.kind === "gwang") s += `<rect x="0" y="0" width="100" height="120" fill="#e0533a"/>` + ci(50, 40, 21, "#fffaf0");
-        s += pa("M0 120 Q50 46 100 120Z", "#232323");
-        for (let x = 18; x < 86; x += 8) s += pa(`M${x} 112 Q${x + 2} 92 ${x + 6} ${84 + Math.abs(50 - x) / 2}`, "none", "#f3efe3", 1.4);
-        if (c.kind === "yeol") for (const [x, y] of [[30, 26], [50, 18], [70, 30]]) s += pa(`M${x - 9} ${y} Q${x - 4} ${y - 6} ${x} ${y} Q${x + 4} ${y - 6} ${x + 9} ${y}`, "none", P.ink, 3);
-        break;
-      case 9: // 국화
-        for (let i = 0; i < 12; i++) s += el(50 + Math.cos(i * Math.PI / 6) * 13, 46 + Math.sin(i * Math.PI / 6) * 13, 9, 4, P.yellow, i * 30);
-        s += ci(50, 46, 8, P.red);
-        s += el(28, 86, 16, 8, P.green, -20) + el(72, 88, 16, 8, P.green, 20);
-        if (sp) s += pa("M30 92 L70 92 L62 112 L38 112Z", P.red) + el(50, 92, 20, 5, "#e8504f") + tx(50, 108, "수", 14, P.yellow);
-        break;
-      case 10: // 단풍
-        for (const [x, y, r] of [[28, 26, 13], [56, 20, 11], [78, 36, 13], [40, 50, 12], [66, 58, 11], [22, 66, 10]]) s += star(x, y, r, P.red);
-        if (sp) s += el(50, 96, 20, 9, "#a8642e") + el(70, 86, 7, 6, "#a8642e") + pa("M68 80 L64 68 M64 72 L58 68 M72 80 L78 68 M76 72 L82 68", "none", "#6b3e22", 2) +
-                     `<rect x="36" y="102" width="4" height="12" fill="#6b3e22"/><rect x="58" y="102" width="4" height="12" fill="#6b3e22"/>`;
-        break;
-      case 11: // 오동
-        s += el(26, 40, 20, 13, P.ink, -20) + el(74, 40, 20, 13, P.ink, 20) + el(50, 24, 18, 12, P.ink);
-        s += pa("M50 116 L50 60", "none", P.green, 4) + el(50, 62, 7, 12, "#e6b422");
-        if (c.kind === "gwang") s += el(50, 92, 18, 10, "#e65a2e") + ci(66, 84, 6, "#2f8f5b") + pa("M34 92 Q12 80 6 100 Q20 96 34 98Z", "#2f8f5b") + pa("M34 96 Q14 104 10 116 Q26 108 36 100Z", P.yellow) + pa("M70 82 L78 80 L70 86Z", P.yellow);
-        if (c.ssang) s += el(50, 96, 26, 8, P.red);
-        break;
-      case 12: // 비
-        for (const x of [16, 34, 66, 84]) s += pa(`M${x} 0 Q${x + 10} 30 ${x - 2} 70`, "none", P.green, 3);
-        if (c.kind === "gwang") s += pa("M22 64 Q50 34 78 64Z", P.yellow) + pa("M50 64 L50 100", "none", P.ink, 3) + el(50, 90, 9, 14, P.ink) + ci(50, 72, 6, "#f0d2b0") + `<rect x="40" y="100" width="20" height="5" fill="${P.red}"/>` + el(80, 108, 8, 5, P.green);
-        if (c.kind === "yeol") s += `<g transform="translate(50 60)">${el(0, 0, 14, 6, P.ink)}${pa("M-12 0 L-26 -10 M-12 0 L-26 8", "none", P.ink, 3)}${ci(12, -3, 5, P.ink)}${el(4, 3, 6, 2.5, P.red)}${pa("M-2 -4 Q4 -22 12 -10", P.ink)}</g>`;
-        if (c.ssang) s += ci(50, 70, 20, P.red) + ci(50, 70, 13, P.ink) + pa("M44 50 L56 64 L46 70 L58 90", "none", P.yellow, 4);
+        for (const x of [14, 32, 70, 88]) s += Pt(`M${x} 0 Q${x + 12} 36 ${x - 4} 84`, "none", GREEN2, 3);
+        for (const x of [14, 32, 70, 88]) for (let yy = 12; yy < 80; yy += 12) s += E(x + 4 + Math.sin(yy / 10) * 3, yy, 2, 5, GREEN, 20);
+        if (g) s += Pt("M0 110 Q30 100 50 112 T100 108 V128 H0Z", BLACK) + Pt("M24 60 Q50 30 76 60Z", YEL, O, 1.4) + Pt("M50 60 L50 96", "none", O, 2.5) +
+                    E(48, 90, 10, 16, RED, 0, ol) + R(40, 96, 16, 12, BLACK) + C(48, 70, 6, "#f2d4b0", ol) + E(82, 106, 7, 5, GREEN2, 0, ol) + C(80, 103, 1.2, O);
+        if (c.kind === "yeol") s += `<g transform="translate(50 92)">` + E(0, 0, 15, 6, BLACK, -10) + Pt("M-12 1 L-30 -10 M-12 2 L-30 10", "none", BLACK, 3) +
+                    Pt("M-4 -4 Q6 -26 20 -14 Q8 -6 4 -1Z", BLACK) + C(14, -4, 5.5, BLACK) + E(6, 3, 7, 2.8, RED, -10) + `</g>`;
+        if (c.kind === "tti") s += Pt("M0 114 Q30 106 50 116 T100 112 V128 H0Z", BLACK);
         break;
     }
+    if (c.kind === "tti") s += ribbon(c.rib);
     return s;
-  }
-
-  function ribbon(c) {
-    const col = c.rib === "cheong" ? P.blue : P.red;
-    let s = `<g transform="rotate(-10 50 66)"><rect x="36" y="20" width="24" height="86" rx="3" fill="${col}" stroke="${P.ink}" stroke-width="1.5"/>`;
-    if (c.rib === "bi") s += `<rect x="36" y="44" width="24" height="6" fill="${P.ink}"/><rect x="36" y="72" width="24" height="6" fill="${P.ink}"/>`;
-    else s += tx(48, 52, RIB[c.rib][0], 18, "#fff") + tx(48, 76, RIB[c.rib][1], 18, "#fff");
-    return s + "</g>";
   }
 
   const svgCache = new Map();
   function faceSVG(c) {
     if (svgCache.has(c.id)) return svgCache.get(c.id);
     const lab = label(c);
-    const labCol = c.kind === "gwang" ? P.red : c.kind === "tti" ? (c.rib === "cheong" ? P.blue : P.red) : c.kind === "yeol" ? P.ink : c.ssang ? P.ink : "#555";
-    const flip = c.kind === "pi" && c.alt ? `transform="translate(100 0) scale(-1 1)"` : "";
+    const labCol = c.kind === "gwang" ? RED : c.kind === "tti" ? (c.rib === "cheong" ? BLUE : RED) : c.kind === "pi" && !c.ssang ? "#555" : O;
+    const mirror = c.kind === "pi" && c.alt ? `transform="translate(100 0) scale(-1 1)"` : "";
     let s = `<svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`;
-    s += `<rect x="1" y="1" width="98" height="148" rx="9" fill="#fffdf6" stroke="#2a2a2a" stroke-width="2"/>`;
-    s += `<svg x="5" y="5" width="90" height="108" viewBox="0 0 100 120" preserveAspectRatio="none"><rect width="100" height="120" fill="${P.paper}"/><g ${flip}>${scene(c)}</g>${c.kind === "tti" ? ribbon(c) : ""}</svg>`;
-    // 월 숫자
-    const nw = c.m >= 10 ? 34 : 26;
-    s += `<rect x="5" y="5" width="${nw}" height="26" rx="6" fill="#fffdf6" stroke="#2a2a2a" stroke-width="1.5"/>` + tx(5 + nw / 2, 25, c.m, 20, P.ink);
-    // 광 표시
-    if (c.kind === "gwang") s += ci(80, 21, 14, P.red, `stroke="#fff" stroke-width="2"`) + tx(80, 27, "광", 16, "#fff");
-    if (c.ssang) s += ci(80, 21, 14, P.ink, `stroke="#fff" stroke-width="2"`) + tx(80, 27, "2", 17, "#fff");
-    // 아래 글자 띠
-    s += `<rect x="5" y="115" width="90" height="30" rx="5" fill="#fff"/>` + tx(50, 139, lab, lab.length >= 3 ? 21 : 24, labCol);
-    s += `</svg>`;
+    s += R(0, 0, 100, 150, WHITE);
+    s += `<svg x="3" y="3" width="94" height="120" viewBox="0 0 100 128" preserveAspectRatio="none"><g ${mirror}>${art(c)}</g></svg>`;
+    s += R(3, 3, 94, 120, "none", `stroke="${O}" stroke-width="1.2"`);
+    const nm = String(c.m), wide = nm.length > 1;
+    s += `<rect x="5" y="5" width="${wide ? 26 : 20}" height="20" rx="5" fill="${WHITE}" stroke="${O}" stroke-width="1.2"/>` + T(wide ? 18 : 15, 20.5, nm, 16, O);
+    if (c.kind === "gwang") s += C(84, 16, 11, RED, `stroke="${WHITE}" stroke-width="2"`) + T(84, 21, "光", 14, WHITE);
+    if (c.ssang) s += C(84, 16, 11, O, `stroke="${WHITE}" stroke-width="2"`) + T(84, 21.5, "2", 15, WHITE);
+    s += T(50, 143, lab, lab.length >= 3 ? 19 : 22, labCol);
+    s += R(0.75, 0.75, 98.5, 148.5, "none", `rx="8" stroke="#2a2a2a" stroke-width="1.5"`) + `</svg>`;
     svgCache.set(c.id, s);
     return s;
   }
-  const BACK = `<svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><rect x="1" y="1" width="98" height="148" rx="9" fill="#b3121d" stroke="#5e0a10" stroke-width="2"/><rect x="9" y="9" width="82" height="132" rx="5" fill="none" stroke="#e2545e" stroke-width="2"/>${ci(50, 75, 18, "#f7f0df")}${tx(50, 83, "양", 22, "#b3121d")}</svg>`;
+  const BACK = `<svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${R(0, 0, 100, 150, "#b3121d")}${R(7, 7, 86, 136, "none", `rx="5" stroke="#e2545e" stroke-width="2"`)}${C(50, 75, 17, "#f7f0df")}${T(50, 83, "양", 21, "#b3121d")}</svg>`;
 
-  function cardEl(c, { face = true, tag = "div", id = true } = {}) {
-    const e = document.createElement(tag);
-    e.className = "card";
-    if (id && c) e.dataset.id = c.id;
-    e.innerHTML = face ? faceSVG(c) : BACK;
-    if (tag === "button") { e.type = "button"; e.setAttribute("aria-label", nameOf(c)); }
+  // 카드 요소는 48장을 처음에 한 번만 만들고, 이후에는 자리만 옮긴다.
+  const EL = new Map();
+  function buildCards() {
+    for (const c of CARDS) {
+      const e = document.createElement("div");
+      e.className = "card down";
+      e.dataset.id = c.id;
+      e.innerHTML = `<div class="inner"><div class="face front">${faceSVG(c)}</div><div class="face back">${BACK}</div></div>`;
+      e.addEventListener("click", () => onHand(c.id));
+      e.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); onHand(c.id); } });
+      EL.set(c.id, e);
+    }
+  }
+  function staticCard(c) {      // 대화상자용 복제본
+    const e = document.createElement("button");
+    e.type = "button"; e.className = "card"; e.setAttribute("aria-label", nameOf(c));
+    e.style.border = "0"; e.style.padding = "0"; e.style.background = "none";
+    e.innerHTML = `<div class="inner"><div class="face front">${faceSVG(c)}</div></div>`;
     return e;
   }
 
@@ -416,8 +455,7 @@
     let tp = t.length >= 5 ? t.length - 4 : 0;
     if (tp) parts.push([`띠 ${t.length}장`, tp]);
     for (const k of ["hong", "cheong", "cho"]) if (t.filter(c => c.rib === k).length === 3) { parts.push([RIB[k], 3]); tp += 3; }
-    // 국진(9월 열끗)은 열끗으로 칠지 쌍피로 칠지 점수가 높은 쪽으로
-    let best = null;
+    let best = null;   // 국진은 열끗·쌍피 중 유리한 쪽
     for (const asPi of [false, true]) {
       const y = caps.filter(c => c.kind === "yeol" && !(asPi && c.gukjin));
       const piN = caps.filter(c => c.kind === "pi").reduce((a, c) => a + c.pi, 0) + (asPi && caps.some(c => c.gukjin) ? 2 : 0);
@@ -432,9 +470,7 @@
     return { total: gp + tp + best.sum, parts, gp, pp: best.pp, yN: best.yN, gN: g.length };
   }
   const piCount = caps => caps.filter(c => c.kind === "pi").reduce((a, c) => a + c.pi, 0);
-  const piMax = caps => piCount(caps) + (caps.some(c => c.gukjin) ? 2 : 0);   // 피박을 피하려면 국진도 피로 친다
-
-  // 컴퓨터가 패의 가치를 매기는 기준
+  const piMax = caps => piCount(caps) + (caps.some(c => c.gukjin) ? 2 : 0);
   function val(c) {
     if (c.kind === "gwang") return c.bi ? 12 : 20;
     if (c.kind === "yeol") return c.godori ? 10 : c.gukjin ? 8 : 6;
@@ -443,12 +479,24 @@
   }
 
   // ================= 소리 =================
-  let sound = store.get("yangmatgo.sound") !== "off";
-  let actx = null;
+  // 모드: all(효과음+목소리) → sfx(효과음만) → off
+  const SND_MODES = ["all", "sfx", "off"], SND_LABEL = { all: "소리·목소리", sfx: "효과음만", off: "소리 끔" };
+  let sndMode = store.get("yangmatgo.snd");
+  if (!SND_MODES.includes(sndMode)) sndMode = "all";
+  let actx = null, master = null, noiseBuf = null;
   function audio() {
-    if (!sound) return null;
+    if (sndMode === "off") return null;
     try {
-      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!actx) {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        const comp = actx.createDynamicsCompressor();
+        comp.threshold.value = -14; comp.ratio.value = 4;
+        master = actx.createGain(); master.gain.value = 0.9;
+        master.connect(comp).connect(actx.destination);
+        noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.6, actx.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
       if (actx.state === "suspended") actx.resume();
       return actx;
     } catch (e) { return null; }
@@ -458,118 +506,185 @@
     const t0 = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
     o.type = type; o.frequency.setValueAtTime(f, t0);
     if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
-    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(master); o.start(t0); o.stop(t0 + dur + 0.05);
   }
-  function slap() {   // 패를 담요에 내려치는 "착"
+  // 잡음 한 줌: 필터 종류·주파수·길이·음량
+  function burst(type, freq, q, dur, vol, delay = 0, sweepTo = 0) {
     const a = audio(); if (!a) return;
-    const n = a.createBuffer(1, a.sampleRate * 0.08, a.sampleRate), d = n.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+    const t0 = a.currentTime + delay;
     const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
-    src.buffer = n; f.type = "lowpass"; f.frequency.value = 1800; g.gain.value = 0.5;
-    src.connect(f).connect(g).connect(a.destination); src.start();
-    tone(120, 0.08, "sine", 0.18);
+    src.buffer = noiseBuf; f.type = type; f.frequency.setValueAtTime(freq, t0); f.Q.value = q;
+    if (sweepTo) f.frequency.exponentialRampToValueAtTime(sweepTo, t0 + dur);
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f).connect(g).connect(master); src.start(t0, Math.random() * 0.4); src.stop(t0 + dur + 0.02);
   }
   const sfx = {
-    slap,
-    take: () => { tone(660, 0.12, "triangle", 0.1); tone(990, 0.16, "triangle", 0.08, 0.07); },
-    event: () => [523, 659, 784].forEach((f, i) => tone(f, 0.14, "square", 0.05, i * 0.08)),
-    go: () => tone(330, 0.35, "sawtooth", 0.06, 0, 880),
-    win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, "triangle", 0.1, i * 0.11)),
-    lose: () => [392, 330, 262].forEach((f, i) => tone(f, 0.3, "triangle", 0.1, i * 0.16)),
+    // 패를 담요에 내리치는 "착!": 날카로운 딱 + 종이 몸통 + 담요 쿵
+    slap(power = 1) {
+      const k = rand(0.9, 1.1);
+      burst("highpass", 3200 * k, 0.7, 0.025, 0.55 * power);
+      burst("bandpass", 1100 * k, 1.1, 0.07, 0.65 * power);
+      tone(150 * k, 0.11, "sine", 0.32 * power, 0, 55);
+    },
+    flip() { burst("highpass", 2400, 0.8, 0.05, 0.25); tone(900, 0.03, "triangle", 0.05); },
+    // 가져오기 "촥": 쓸어 담는 소리 + 맑은 똑
+    take() { burst("bandpass", 2600, 0.9, 0.16, 0.28, 0, 700); tone(1320, 0.07, "triangle", 0.07, 0.12); tone(1760, 0.09, "triangle", 0.05, 0.17); },
+    shuffle() { for (let i = 0; i < 22; i++) burst("highpass", 2600 + rand(-400, 400), 0.8, 0.018, 0.22, i * 0.028); },
+    event() { [784, 988, 1175].forEach((f, i) => tone(f, 0.12, "square", 0.05, i * 0.07)); },
+    go() { tone(220, 0.08, "sine", 0.4, 0, 70); tone(392, 0.32, "sawtooth", 0.07, 0.05, 784); },
+    win() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.24, "triangle", 0.12, i * 0.1)); },
+    lose() { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.32, "triangle", 0.11, i * 0.15)); },
   };
+  const buzz = p => { try { if (sndMode !== "off" && navigator.vibrate) navigator.vibrate(p); } catch (e) {} };
 
-  // ================= 화면 요소 =================
+  // ================= 목소리 =================
+  // 기기에 들어 있는 한국어 음성으로, 높고 발랄하게 말한다.
+  const LINES = {
+    bomb: ["폭탄이다~!", "펑! 폭탄~!"], shake: ["흔들어 흔들어~!"], jjok: ["쪽~!", "쪽! 히힛"], ppuk: ["앗, 뻑이야!", "뻑~!"],
+    ttadak: ["따닥~!"], sweep: ["싹쓸이~!", "싹 다 쓸었다~!"], eatppuk: ["뻑 먹었다~!"], jappuk: ["자뻑이다~!"],
+    stop: ["스톱!", "여기까지~ 스톱!"], pibak: ["피박이야~!"], gwangbak: ["광박!"], meongtta: ["멍따~!"], gobak: ["고박이네~!"],
+    nagari: ["나가리네~"], win: ["이겼다~! 최고야!", "와아, 이겼다~!"], lose: ["에잉, 아깝다~", "다음엔 이길 거야!"],
+    start: ["시작해 볼까요~?"],
+  };
+  const GO_NUM = ["", "", "투", "쓰리", "포", "파이브", "식스", "세븐"];
+  let voice = null;
+  function pickVoice() {
+    try {
+      const vs = speechSynthesis.getVoices().filter(v => /^ko/i.test(v.lang));
+      // 여성 음성으로 알려진 이름을 먼저 고른다
+      voice = vs.find(v => /yuna|유나|heami|sunhi|선희|female|여|google/i.test(v.name)) || vs[0] || null;
+    } catch (e) { voice = null; }
+  }
+  if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+  function say(text) {
+    if (sndMode !== "all" || !("speechSynthesis" in window)) return;
+    try {
+      if (speechSynthesis.pending) speechSynthesis.cancel();   // 밀린 말이 쌓이면 비우고 지금 것만
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ko-KR"; if (voice) u.voice = voice;
+      u.pitch = 1.75; u.rate = 1.08; u.volume = 1;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+  const speak = key => { const l = LINES[key]; if (l) say(l[Math.floor(Math.random() * l.length)]); };
+  const sayGo = n => say(n === 1 ? "고~!" : `${GO_NUM[n] || n} 고~!`);
+
+  // ================= 화면 맞춤 =================
+  // 실제로 보이는 높이(메신저 안 브라우저의 주소창·툴바를 뺀 높이)를 재서 카드 크기를 정한다.
+  const app = $("#app");
+  function fit() {
+    const vv = window.visualViewport;
+    const vw = Math.min(vv ? vv.width : innerWidth, document.documentElement.clientWidth || innerWidth);
+    const vh = vv ? vv.height : innerHeight;
+    document.documentElement.style.setProperty("--app-h", Math.round(vh) + "px");
+    const W = Math.min(vw, 1120) - 24;
+    const portrait = vw < vh * 1.1;
+    const shortLand = !portrait && vh <= 560;
+    const gap = portrait ? 6 : 8;
+    let hand = portrait ? Math.min((W - 4 * gap) / 5, (vh * 0.34 - 14) / 3.08)
+             : Math.min((W - 9 * gap) / 10, (vh * (shortLand ? 0.3 : 0.27)) / 1.55);
+    hand = clamp(hand, 34, 108);
+    const cap = clamp(shortLand ? vh * 0.05 : Math.min(W / (portrait ? 15 : 28), vh * 0.045), 14, 34);
+    const set = (k, v) => document.documentElement.style.setProperty(k, v.toFixed(1) + "px");
+    set("--hand-w", hand); set("--cap-w", cap); set("--gap", gap);
+    $("#hand").style.maxWidth = ((portrait ? 5 : 10) * hand + ((portrait ? 5 : 10) - 1) * gap + 1).toFixed(0) + "px";
+    baseFloor = Math.min(hand * 0.86, 84);
+    fitFloor();
+  }
+  // 바닥 카드: 담요 칸 안에 들어갈 때까지 줄인다 (바닥 패 수가 바뀔 때마다)
+  let baseFloor = 50;
+  function fitFloor() {
+    const fl = $("#floor"), tb = fl.parentElement;
+    let fw = baseFloor;
+    document.documentElement.style.setProperty("--floor-w", fw.toFixed(1) + "px");
+    const used = () => { let h = 0; for (const g of fl.children) h = Math.max(h, g.offsetTop + g.offsetHeight); return h - fl.offsetTop + 30; };
+    for (let i = 0; i < 14 && used() > tb.clientHeight - 16; i++) {
+      fw *= 0.92;
+      document.documentElement.style.setProperty("--floor-w", fw.toFixed(1) + "px");
+    }
+  }
+  window.addEventListener("resize", () => fit());
+  if (window.visualViewport) visualViewport.addEventListener("resize", () => fit());
+  window.addEventListener("orientationchange", () => setTimeout(fit, 250));
+
+  // ================= 알림·대화상자 =================
   const toastEl = $("#toast");
   let toastQ = Promise.resolve();
   function toast(big, small = "") {
     toastQ = toastQ.then(async () => {
       toastEl.innerHTML = big + (small ? `<small>${small}</small>` : "");
-      toastEl.classList.add("on");
-      await sleep(Math.max(900, D * 1.6));
-      toastEl.classList.remove("on");
-      await sleep(180);
+      const a = toastEl.animate([
+        { opacity: 0, transform: "translate(-50%, -50%) scale(.55)" },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1.08)", offset: 0.18 },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: 0.28 },
+        { opacity: 1, transform: "translate(-50%, -50%) scale(1)", offset: 0.85 },
+        { opacity: 0, transform: "translate(-50%, -50%) scale(.96)" },
+      ], { duration: Math.max(1100, D * 2), easing: "ease-out" });
+      await a.finished.catch(() => {});
     });
     return toastQ;
   }
-
   function modal(build) {
     return new Promise(resolve => {
-      const root = $("#modal-root");
       const wrap = document.createElement("div");
       wrap.className = "modal";
       const sheet = document.createElement("div");
-      sheet.className = "sheet";
-      sheet.setAttribute("role", "dialog");
-      sheet.setAttribute("aria-modal", "true");
+      sheet.className = "sheet"; sheet.setAttribute("role", "dialog"); sheet.setAttribute("aria-modal", "true");
       wrap.appendChild(sheet);
       const done = v => { wrap.remove(); resolve(v); };
       build(sheet, done);
-      root.appendChild(wrap);
-      const first = sheet.querySelector("button");
-      if (first) first.focus();
+      $("#modal-root").appendChild(wrap);
+      sheet.animate([{ transform: "scale(.92)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], { duration: 180, easing: "ease-out" });
+      const first = sheet.querySelector("button"); if (first) first.focus();
     });
   }
   function ask(title, text, yes, no, yesClass = "red") {
     return modal((s, done) => {
       s.innerHTML = `<h2>${title}</h2><p>${text}</p><div class="row"><button class="big ${yesClass}" type="button">${yes}</button><button class="big" type="button">${no}</button></div>`;
       const [b1, b2] = s.querySelectorAll("button");
-      b1.onclick = () => done(true);
-      b2.onclick = () => done(false);
+      b1.onclick = () => done(true); b2.onclick = () => done(false);
     });
   }
   function choosePrompt(opts) {
     return modal((s, done) => {
       s.innerHTML = `<h2>어느 패를 가져갈까요?</h2><p>같은 달 패가 두 장 있습니다. 가져올 패를 누르세요.</p><div class="picks"></div>`;
       const box = s.querySelector(".picks");
-      for (const c of opts) {
-        const b = cardEl(c, { tag: "button", id: false });
-        b.onclick = () => done(c);
-        box.appendChild(b);
-      }
-    });
-  }
-
-  // 이전 자리에서 새 자리로 미끄러지게 (FLIP)
-  function snapshot() {
-    const m = new Map();
-    document.querySelectorAll(".wrap [data-id]").forEach(e => m.set(e.dataset.id, e.getBoundingClientRect()));
-    return m;
-  }
-  function animateFrom(prev) {
-    if (reduceMotion) return;
-    document.querySelectorAll(".wrap [data-id]").forEach(e => {
-      const r1 = e.getBoundingClientRect(), r0 = prev.get(e.dataset.id);
-      if (!r0) { e.animate([{ opacity: 0, transform: "scale(.85)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: "ease-out" }); return; }
-      const dx = r0.left - r1.left, dy = r0.top - r1.top, sc = r0.width / r1.width;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sc - 1) < 0.01) return;
-      e.animate([{ transform: `translate(${dx}px, ${dy}px) scale(${sc})`, zIndex: 20 }, { transform: "none", zIndex: 20 }],
-                { duration: Math.max(260, D * 0.75), easing: "cubic-bezier(.2,.8,.2,1)" });
+      for (const c of opts) { const b = staticCard(c); b.onclick = () => done(c); box.appendChild(b); }
     });
   }
 
   // ================= 판 상태 =================
   const ME = "me", CPU = "cpu";
   const other = w => (w === ME ? CPU : ME);
-  let D = 650;                                     // 동작 사이 간격. 어르신도 따라오게 넉넉히
+  let D = 560;          // 한 동작이 끝나고 다음 동작까지의 간격
+  let MOVE = 340;       // 패가 날아가는 시간
   let G = null;
   let stats = (() => { try { return JSON.parse(store.get("yangmatgo.stats")) || { w: 0, l: 0, pts: 0 }; } catch (e) { return { w: 0, l: 0, pts: 0 }; } })();
 
   function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
   const four = arr => { const n = {}; for (const c of arr) if (++n[c.m] === 4) return true; return false; };
 
-  function newRound(starter = ME, carry = 0) {
+  async function newRound(starter = ME, carry = 0) {
     let deck, me, cpu, floor;
-    do {     // 한 손이나 바닥에 같은 달 네 장이 몰리면 다시 섞는다
+    do {
       deck = shuffle(CARDS.slice());
       me = deck.splice(0, 10); cpu = deck.splice(0, 10); floor = deck.splice(0, 8);
     } while (four(me) || four(cpu) || four(floor));
     const byM = (a, b) => a.m - b.m || a.id - b.id;
-    G = {
-      deck, floor, hands: { me: me.sort(byM), cpu: cpu.sort(byM) }, caps: { me: [], cpu: [] },
-      go: { me: 0, cpu: 0 }, goBase: { me: 0, cpu: 0 }, shakes: { me: 0, cpu: 0 }, shook: { me: new Set(), cpu: new Set() },
-      ppuk: {}, turn: starter, carry, over: false, busy: false,
-    };
+    // 일단 모두 더미에 모았다가 나눠 준다 (애니메이션)
+    G = { deck: CARDS.slice(), floor: [], hands: { me: [], cpu: [] }, caps: { me: [], cpu: [] },
+          go: { me: 0, cpu: 0 }, goBase: { me: 0, cpu: 0 }, shakes: { me: 0, cpu: 0 }, shook: { me: new Set(), cpu: new Set() },
+          ppuk: {}, turn: starter, carry, over: false, busy: true };
+    render(true);
+    sfx.shuffle();
+    await sleep(380);
+    G.deck = deck; G.floor = floor; G.hands = { me: me.sort(byM), cpu: cpu.sort(byM) };
+    render();
+    fit();
+    await sleep(MOVE + 120);
+    sfx.slap(0.7);
+    G.busy = false;
     render();
     status(starter === ME ? "내 차례입니다. 낼 패를 누르세요." : "컴퓨터 차례입니다.");
     if (carry) toast("나가리 판", `이번 판 점수 ×${2 ** carry}`);
@@ -595,17 +710,28 @@
     return got;
   }
   const removeFromHand = (who, c) => { G.hands[who] = G.hands[who].filter(x => x !== c); };
-
   async function choose(who, opts) {
     if (who === CPU) return opts.slice().sort((a, b) => val(b) - val(a))[0];
     return choosePrompt(opts);
   }
 
-  // 한 턴: 손패 한 장(또는 폭탄 세 장)을 내고, 더미에서 한 장 뒤집는다.
+  // 패 하나를 바닥에 내려놓는 한 박자: 날아가서 → 닿는 순간 착! → 잠깐 쉼
+  async function land(card, power = 1) {
+    render();
+    await sleep(MOVE);
+    sfx.slap(power); buzz(14);
+    bump(card);
+    await sleep(Math.max(120, D - MOVE));
+  }
+  async function sweep() {
+    render();
+    sfx.take(); buzz([8, 30, 8]);
+    await sleep(MOVE + 140);
+  }
+
   async function turn(who, A, bomb = false) {
     G.busy = true;
     const events = [];
-    const capsBefore = G.caps[who].length;
     let stealN = 0, pendA = null, placedA = false, aCount = 0;
 
     if (A && bomb) {
@@ -613,45 +739,44 @@
       three.forEach(c => removeFromHand(who, c));
       G.floor.push(...three);
       G.shakes[who]++;
-      render(); slap(); await sleep(D);
+      await land(A, 1.4);
       capture(who, floorOf(A.m));
-      stealN++; events.push(["폭탄!", "점수 2배 · 피 한 장"]);
-      render(); sfx.take(); await sleep(D);
+      stealN++; events.push(["폭탄!", "점수 2배 · 피 한 장", "bomb"]);
+      await sweep();
       A = null;
     } else if (A) {
       removeFromHand(who, A);
       const fm = floorOf(A.m);
       aCount = fm.length;
       G.floor.push(A);
-      render(); slap(); await sleep(D);
+      await land(A, aCount ? 1.15 : 0.9);
       if (aCount === 0) placedA = true;
-      else if (aCount === 1) pendA = { A, opts: fm };
-      else if (aCount === 2) pendA = { A, opts: fm };
-      else if (aCount === 3) {   // 뻑 먹기
+      else if (aCount <= 2) pendA = { A, opts: fm };
+      else {
         const owner = G.ppuk[A.m];
         capture(who, floorOf(A.m));
-        if (owner) { const n = owner === who ? 2 : 1; stealN += n; events.push([owner === who ? "자뻑!" : "뻑 먹기!", `피 ${n}장`]); }
-        render(); sfx.take(); await sleep(D * 0.7);
+        if (owner) { const n = owner === who ? 2 : 1; stealN += n; events.push([owner === who ? "자뻑!" : "뻑 먹기!", `피 ${n}장`, owner === who ? "jappuk" : "eatppuk"]); }
+        await sweep();
       }
     }
 
-    // 더미에서 한 장
     if (G.deck.length) {
       const B = G.deck.pop();
       G.floor.push(B);
-      render(); slap(); await sleep(D);
+      sfx.flip();
+      await land(B, 1);
       if (A && B.m === A.m && (placedA || pendA)) {
-        if (placedA) { capture(who, [A, B]); stealN++; events.push(["쪽!", "피 한 장"]); }
-        else if (aCount === 1) { pendA = null; G.ppuk[A.m] = who; events.push(["뻑!", "세 장이 바닥에 남습니다"]); }
-        else { capture(who, floorOf(A.m)); pendA = null; stealN++; events.push(["따닥!", "피 한 장"]); }
+        if (placedA) { capture(who, [A, B]); stealN++; events.push(["쪽!", "피 한 장", "jjok"]); }
+        else if (aCount === 1) { pendA = null; G.ppuk[A.m] = who; events.push(["뻑!", "세 장이 바닥에 남습니다", "ppuk"]); }
+        else { capture(who, floorOf(A.m)); pendA = null; stealN++; events.push(["따닥!", "피 한 장", "ttadak"]); }
       } else {
         const fm = floorOf(B.m).filter(c => c !== B);
         if (fm.length === 1) capture(who, [B, fm[0]]);
-        else if (fm.length === 2) { render(); const pick = await choose(who, fm); capture(who, [B, pick]); }
+        else if (fm.length === 2) { const pick = await choose(who, fm); capture(who, [B, pick]); }
         else if (fm.length === 3) {
           const owner = G.ppuk[B.m];
           capture(who, floorOf(B.m));
-          if (owner) { const n = owner === who ? 2 : 1; stealN += n; events.push([owner === who ? "자뻑!" : "뻑 먹기!", `피 ${n}장`]); }
+          if (owner) { const n = owner === who ? 2 : 1; stealN += n; events.push([owner === who ? "자뻑!" : "뻑 먹기!", `피 ${n}장`, owner === who ? "jappuk" : "eatppuk"]); }
         }
       }
     }
@@ -659,25 +784,24 @@
       const pick = pendA.opts.length === 1 ? pendA.opts[0] : await choose(who, pendA.opts);
       capture(who, [pendA.A, pick]);
     }
-    if (G.floor.length === 0 && G.deck.length > 0) { stealN++; events.push(["싹쓸이!", "피 한 장"]); }
+    if (G.floor.length === 0 && G.deck.length > 0) { stealN++; events.push(["싹쓸이!", "피 한 장", "sweep"]); }
     const got = stealN ? steal(who, stealN) : 0;
-    render();
-    if (G.caps[who].length > capsBefore) sfx.take();
-    for (const [big, small] of events) { sfx.event(); toast(big, who === ME ? small : "컴퓨터 · " + small); }
+    await sweep();
+    for (const [big, small, key] of events) { sfx.event(); speak(key); toast(big, who === ME ? small : "컴퓨터 · " + small); }
     if (got && who === CPU) toast("피를 뺏겼습니다", `${got}장`);
-    await sleep(D * 0.8);
+    await sleep(D * 0.5);
     await afterTurn(who);
   }
 
   async function afterTurn(who) {
     const s = score(G.caps[who]).total;
     if (s >= 7 && s > G.goBase[who]) {
-      if (!G.deck.length) return endRound(who);             // 마지막 패면 자동으로 스톱
-      const go = who === ME ? await askGo(s) : cpuGo(s);
-      if (!go) return endRound(who);
+      if (!G.deck.length) return endRound(who);
+      const go = who === ME ? await askGo(s) : cpuGo();
+      if (!go) { speak("stop"); return endRound(who); }
       G.go[who]++;
       G.goBase[who] = s;
-      sfx.go();
+      sfx.go(); sayGo(G.go[who]); buzz([20, 40, 20]);
       render();
       await toast(`${G.go[who]}고!`, who === ME ? "계속 갑니다" : "컴퓨터가 고를 불렀습니다");
     }
@@ -699,23 +823,21 @@
       el.innerHTML = `<h2>${s}점 났습니다</h2><p>고를 부르면 계속 치고 점수가 더 오릅니다. 대신 컴퓨터가 먼저 나면 두 배로 잃습니다.</p>
         <div class="row"><button class="big red" type="button">고</button><button class="big dark" type="button">스톱</button></div>`;
       const [g, st] = el.querySelectorAll("button");
-      g.onclick = () => done(true);
-      st.onclick = () => done(false);
+      g.onclick = () => done(true); st.onclick = () => done(false);
     });
   }
-  function cpuGo(s) {
+  function cpuGo() {
     const opp = score(G.caps.me).total, left = G.deck.length;
     if (left <= 4 || opp >= 5) return false;
     if (G.go.cpu >= 2) return Math.random() < 0.3;
     return Math.random() < 0.7;
   }
 
-  // 컴퓨터: 먹을 수 있으면 값진 것부터, 못 먹으면 버려도 아까운 정도가 가장 작은 패
   async function cpuTurn() {
     G.busy = true;
     status("컴퓨터가 생각 중입니다…");
     render();
-    await sleep(D + 350);
+    await sleep(D + 300);
     const hand = G.hands.cpu;
     if (!hand.length) return turn(CPU, null);
     let best = null;
@@ -731,7 +853,7 @@
     const c = best.c;
     if (best.same === 3 && best.fm === 1) { status("컴퓨터가 폭탄을 냈습니다."); return turn(CPU, c, true); }
     if (best.same === 3 && best.fm === 0 && !G.shook.cpu.has(c.m)) {
-      G.shakes.cpu++; G.shook.cpu.add(c.m); sfx.event();
+      G.shakes.cpu++; G.shook.cpu.add(c.m); sfx.event(); speak("shake");
       render();
       await toast("흔들기!", `컴퓨터 · ${c.m}월 세 장`);
     }
@@ -751,7 +873,7 @@
       bomb = await ask("폭탄", `${c.m}월 패 세 장을 한꺼번에 내고 바닥의 ${c.m}월 패까지 가져옵니다. 점수 2배, 피 한 장을 뺏습니다.`, "폭탄!", "한 장만 내기");
     } else if (same === 3 && fm === 0 && !G.shook.me.has(c.m)) {
       if (await ask("흔들기", `${c.m}월 패 세 장을 보여 줍니다. 이번 판에 이기면 점수 2배입니다.`, "흔들기", "그냥 내기")) {
-        G.shakes.me++; G.shook.me.add(c.m); sfx.event(); render();
+        G.shakes.me++; G.shook.me.add(c.m); sfx.event(); speak("shake"); render();
         await toast("흔들기!", `${c.m}월 세 장`);
       }
     }
@@ -764,18 +886,19 @@
     const lose = other(win);
     const sw = score(G.caps[win]);
     const rows = sw.parts.map(([k, v]) => [k, `${v}점`]);
+    const voices = [];
     let base = sw.total;
     if (G.go[win]) { rows.push([`${G.go[win]}고 보너스`, `+${G.go[win]}점`]); base += G.go[win]; }
     let mult = 1;
-    const mul = (name, x) => { mult *= x; rows.push([name, `×${x}`]); };
+    const mul = (name, x, v) => { mult *= x; rows.push([name, `×${x}`]); if (v) voices.push(v); };
     if (G.go[win] >= 3) mul(`${G.go[win]}고`, 2 ** (G.go[win] - 2));
     if (G.shakes[win]) mul(G.shakes[win] > 1 ? `흔들기·폭탄 ${G.shakes[win]}번` : "흔들기·폭탄", 2 ** G.shakes[win]);
-    if (sw.pp > 0 && piMax(G.caps[lose]) < 7) mul("피박", 2);
-    if (sw.gp > 0 && score(G.caps[lose]).gN === 0) mul("광박", 2);
-    if (sw.yN >= 7) mul("멍따", 2);
-    if (G.go[lose] > 0) mul("고박", 2);
+    if (sw.pp > 0 && piMax(G.caps[lose]) < 7) mul("피박", 2, "pibak");
+    if (sw.gp > 0 && score(G.caps[lose]).gN === 0) mul("광박", 2, "gwangbak");
+    if (sw.yN >= 7) mul("멍따", 2, "meongtta");
+    if (G.go[lose] > 0) mul("고박", 2, "gobak");
     if (G.carry) mul("나가리 판", 2 ** G.carry);
-    return { rows, total: base * mult };
+    return { rows, total: base * mult, voices };
   }
 
   async function endRound(win) {
@@ -785,12 +908,13 @@
     if (win === ME) { stats.w++; stats.pts += r.total; sfx.win(); } else { stats.l++; stats.pts -= r.total; sfx.lose(); }
     store.set("yangmatgo.stats", JSON.stringify(stats));
     status(win === ME ? "이겼습니다!" : "졌습니다.");
-    renderRecord();
     await sleep(D);
+    speak(r.voices[0] || (win === ME ? "win" : "lose"));
     await modal((el, done) => {
       el.innerHTML = `<h2>${win === ME ? "이겼습니다!" : "컴퓨터가 이겼습니다"}</h2>
         <table class="tbl"><tbody>${r.rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}
         <tr class="sum"><td>${win === ME ? "얻은 점수" : "잃은 점수"}</td><td>${r.total}점</td></tr></tbody></table>
+        <p class="small">전적 ${stats.w}승 ${stats.l}패 · 누적 ${stats.pts >= 0 ? "+" : ""}${stats.pts}점</p>
         <div class="row"><button class="big red" type="button">다음 판</button></div>`;
       el.querySelector("button").onclick = () => done();
     });
@@ -801,6 +925,7 @@
     G.over = true; G.busy = true;
     render();
     status("나가리");
+    speak("nagari");
     await modal((el, done) => {
       el.innerHTML = `<h2>나가리</h2><p>패를 다 쳤는데 스톱한 사람이 없습니다. 다음 판 점수는 ${2 ** (G.carry + 1)}배입니다.</p>
         <div class="row"><button class="big red" type="button">다음 판</button></div>`;
@@ -811,28 +936,33 @@
 
   // ================= 그리기 =================
   function status(t) { $("#status").textContent = t; }
-  function renderRecord() {
-    $("#record").textContent = `전적 ${stats.w}승 ${stats.l}패 · 누적 ${stats.pts >= 0 ? "+" : ""}${stats.pts}점`;
-  }
 
-  function capsGroups(caps) {
-    const g = { 광: [], 열끗: [], 띠: [], 피: [] };
-    for (const c of caps) g[{ gwang: "광", yeol: "열끗", tti: "띠", pi: "피" }[c.kind]].push(c);
-    return g;
+  // 자리만 옮기고, 옮겨진 카드는 이전 자리에서 미끄러져 오게 (FLIP)
+  function place(container, cards, faceUp) {
+    for (const c of cards) {
+      const e = EL.get(c.id);
+      e.classList.toggle("down", !faceUp);
+      if (e.parentElement !== container || e.nextSibling) container.appendChild(e);
+    }
   }
-  function renderCaps(box, caps) {
-    box.innerHTML = "";
-    const g = capsGroups(caps);
-    for (const k of Object.keys(g)) {
-      const d = document.createElement("div");
-      d.className = "grp";
-      const n = k === "피" ? piCount(caps) : g[k].length;
-      d.innerHTML = `<h3><span>${k}</span><b>${n}</b></h3>`;
-      const st = document.createElement("div");
-      st.className = "stack";
-      for (const c of g[k]) st.appendChild(cardEl(c));
-      d.appendChild(st);
-      box.appendChild(d);
+  function grpBox(id, title) {
+    let d = document.getElementById(id);
+    if (!d) {
+      d = document.createElement("div");
+      d.className = "grp"; d.id = id;
+      d.innerHTML = `<h3><span>${title}</span><b>0</b></h3><div class="stack"></div>`;
+    }
+    return d;
+  }
+  function renderCaps(who) {
+    const box = $(`#${who}-caps`);
+    const groups = { gwang: "광", yeol: "열끗", tti: "띠", pi: "피" };
+    for (const k of Object.keys(groups)) {
+      const d = grpBox(`${who}-${k}`, groups[k]);
+      if (d.parentElement !== box) box.appendChild(d);
+      const list = G.caps[who].filter(c => c.kind === k);
+      d.querySelector("b").textContent = k === "pi" ? piCount(G.caps[who]) : list.length;
+      place(d.querySelector(".stack"), list, true);
     }
   }
   function renderBadges(box, who) {
@@ -842,56 +972,110 @@
     box.innerHTML = b.join("");
   }
 
-  function render() {
-    const prev = snapshot();
-    // 컴퓨터
+  function render(noAnim = false) {
+    const prev = new Map();
+    if (!noAnim) for (const [id, e] of EL) if (e.isConnected) prev.set(id, e.getBoundingClientRect());
+
     $("#cpu-pts").textContent = score(G.caps.cpu).total;
+    $("#cpu-left").textContent = `· ${G.hands.cpu.length}장`;
     renderBadges($("#cpu-badges"), CPU);
-    const ch = $("#cpu-hand"); ch.innerHTML = "";
-    for (const c of G.hands.cpu) ch.appendChild(cardEl(c, { face: false }));
-    $("#cpu-left").textContent = `· 손패 ${G.hands.cpu.length}장`;
-    renderCaps($("#cpu-caps"), G.caps.cpu);
-    // 더미
-    const dk = $("#deck"); dk.innerHTML = "";
-    const n = G.deck.length;
-    for (let i = Math.max(0, n - 3); i < n; i++) dk.appendChild(cardEl(G.deck[i], { face: false, id: i === n - 1 }));
-    $("#deck-n").textContent = `${n}장`;
-    // 바닥: 같은 달끼리 겹쳐 놓는다
-    const fl = $("#floor"); fl.innerHTML = "";
+    place($("#cpu-hand"), G.hands.cpu, false);
+    renderCaps(CPU);
+
+    place($("#deck"), G.deck, false);
+    $("#deck-n").textContent = `${G.deck.length}장`;
+
+    // 바닥: 같은 달끼리 겹친다. 묶음 상자는 달별로 재사용
+    const fl = $("#floor");
     const order = [];
     for (const c of G.floor) if (!order.includes(c.m)) order.push(c.m);
-    for (const m of order) {
-      const grp = document.createElement("div");
-      grp.className = "fgrp";
-      grp.setAttribute("aria-label", `바닥 ${m}월`);
-      if (G.ppuk[m]) grp.innerHTML = `<span class="tag">뻑</span>`;
-      for (const c of G.floor.filter(x => x.m === m)) grp.appendChild(cardEl(c));
-      fl.appendChild(grp);
+    const keep = new Set(order.map(m => "fg" + m));
+    for (const g of [...fl.children]) if (!keep.has(g.id)) {
+      if (g.children.length && [...g.querySelectorAll(".card")].length) continue;   // 아직 카드가 남았으면 아래에서 비워짐
+      g.remove();
     }
-    // 나
+    for (const m of order) {
+      let grp = document.getElementById("fg" + m);
+      if (!grp) { grp = document.createElement("div"); grp.className = "fgrp"; grp.id = "fg" + m; }
+      if (grp.parentElement !== fl || order.indexOf(m) !== [...fl.children].indexOf(grp)) fl.appendChild(grp);
+      let tag = grp.querySelector(".tag");
+      if (G.ppuk[m] && !tag) { tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "뻑"; grp.prepend(tag); }
+      if (!G.ppuk[m] && tag) tag.remove();
+      place(grp, G.floor.filter(x => x.m === m), true);
+    }
+
     $("#me-pts").textContent = score(G.caps.me).total;
     renderBadges($("#me-badges"), ME);
-    renderCaps($("#me-caps"), G.caps.me);
-    const hd = $("#hand"); hd.innerHTML = "";
+    renderCaps(ME);
+    const hd = $("#hand");
     const mine = G.turn === ME && !G.busy && !G.over;
     hd.className = "hand " + (mine ? "mine" : "wait");
+    place(hd, G.hands.me, true);
     for (const c of G.hands.me) {
-      const b = cardEl(c, { tag: "button" });
-      if (mine && G.floor.some(f => f.m === c.m)) b.classList.add("match");
-      b.onclick = () => onHand(c.id);
-      hd.appendChild(b);
+      const e = EL.get(c.id);
+      e.classList.toggle("match", mine && G.floor.some(f => f.m === c.m));
+      e.tabIndex = mine ? 0 : -1;
+      e.setAttribute("role", "button");
+      e.setAttribute("aria-label", nameOf(c));
     }
-    animateFrom(prev);
+    for (const [id, e] of EL) if (!G.hands.me.some(c => c.id === id)) { e.classList.remove("match"); e.removeAttribute("role"); e.removeAttribute("tabindex"); e.removeAttribute("aria-label"); }
+    // 비어 버린 바닥 묶음 정리
+    for (const g of [...fl.children]) if (!g.querySelector(".card")) g.remove();
+
+    fitFloor();
+    if (noAnim || reduceMotion) return;
+    for (const [id, e] of EL) {
+      const r0 = prev.get(id);
+      if (!r0 || !e.isConnected) continue;
+      const r1 = e.getBoundingClientRect();
+      const dx = r0.left - r1.left, dy = r0.top - r1.top, sc = r0.width / r1.width;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sc - 1) < 0.02) continue;
+      const lift = Math.min(40, Math.hypot(dx, dy) * 0.12);
+      e.style.zIndex = 30;
+      const a = e.animate([
+        { transform: `translate(${dx}px, ${dy}px) scale(${sc})` },
+        { transform: `translate(${dx * 0.45}px, ${dy * 0.45 - lift}px) scale(${(sc + 1) / 2 * 1.12})`, offset: 0.5 },
+        { transform: "none" },
+      ], { duration: MOVE, easing: "cubic-bezier(.25,.75,.3,1)" });
+      a.onfinish = a.oncancel = () => { e.style.zIndex = ""; };
+    }
+  }
+
+  // 바닥에 닿는 순간: 묶음이 살짝 눌렸다 튀고, 먼지가 인다
+  function bump(card) {
+    if (reduceMotion) return;
+    const e = EL.get(card.id);
+    const grp = e.parentElement;
+    if (grp && grp.classList.contains("fgrp")) grp.animate([{ transform: "scale(1)" }, { transform: "scale(.94) translateY(2px)" }, { transform: "scale(1.03)" }, { transform: "scale(1)" }], { duration: 240, easing: "ease-out" });
+    const tb = $(".table");
+    tb.animate([{ transform: "translate(0,0)" }, { transform: "translate(1px,2px)" }, { transform: "translate(-1px,-1px)" }, { transform: "translate(0,0)" }], { duration: 160 });
+    const r = e.getBoundingClientRect();
+    for (let i = 0; i < 7; i++) {
+      const d = document.createElement("div");
+      d.className = "dust";
+      d.style.left = (r.left + r.width / 2) + "px"; d.style.top = (r.bottom - 4) + "px";
+      document.body.appendChild(d);
+      const a = rand(Math.PI * 0.9, Math.PI * 2.1), dist = rand(18, 38);
+      d.animate([{ transform: "translate(-50%,-50%) scale(1)", opacity: .9 },
+                 { transform: `translate(calc(-50% + ${Math.cos(a) * dist}px), calc(-50% + ${Math.sin(a) * dist * 0.5}px)) scale(.3)`, opacity: 0 }],
+                { duration: rand(300, 480), easing: "ease-out" }).onfinish = () => d.remove();
+    }
   }
 
   // ================= 버튼 =================
-  const syncSound = () => { $("#btn-sound").textContent = sound ? "소리 켬" : "소리 끔"; };
+  const syncSound = () => { $("#btn-sound").textContent = SND_LABEL[sndMode]; };
   syncSound();
-  $("#btn-sound").onclick = () => { sound = !sound; store.set("yangmatgo.sound", sound ? "on" : "off"); syncSound(); };
+  $("#btn-sound").onclick = () => {
+    sndMode = SND_MODES[(SND_MODES.indexOf(sndMode) + 1) % SND_MODES.length];
+    store.set("yangmatgo.snd", sndMode); syncSound();
+    if (sndMode === "all") say("목소리 켰어요~!");
+    else if ("speechSynthesis" in window) speechSynthesis.cancel();
+  };
   $("#btn-new").onclick = async () => {
     if (G && !G.over && (G.caps.me.length || G.caps.cpu.length)) {
       if (!(await ask("새 판", "지금 판을 그만두고 새로 시작할까요? 이번 판은 기록되지 않습니다.", "새로 시작", "계속하기"))) return;
     }
+    if (G && G.busy && !G.over) return;
     newRound(ME, 0);
   };
   $("#btn-rules").onclick = () => modal((el, done) => {
@@ -903,18 +1087,26 @@
         <li>열끗·띠는 5장부터 1점, 한 장마다 1점 더. 고도리 5점, 홍단·청단·초단 각 3점.</li>
         <li>피는 10장부터 1점, 한 장마다 1점 더. 쌍피는 두 장으로 칩니다.</li>
         <li><b>쪽·따닥·싹쓸이·뻑 먹기</b>를 하면 상대 피를 한 장 뺏습니다.</li>
-        <li><b>흔들기·폭탄</b>은 점수 2배. 이긴 쪽이 피로 점수를 냈는데 진 쪽 피가 7장 미만이면 <b>피박</b>, 광으로 냈는데 진 쪽 광이 없으면 <b>광박</b>, 열끗이 7장 이상이면 <b>멍따</b>로 각각 2배.</li>
-        <li>고를 불렀다가 상대가 먼저 나면 <b>고박</b>으로 2배를 잃습니다.</li>
+        <li><b>흔들기·폭탄</b>은 점수 2배. 피박·광박·멍따·고박도 각각 2배.</li>
         <li>패를 다 쳐도 아무도 스톱하지 못하면 <b>나가리</b>. 다음 판 점수가 2배가 됩니다.</li>
       </ul>
+      <p class="small">전적 ${stats.w}승 ${stats.l}패 · 누적 ${stats.pts >= 0 ? "+" : ""}${stats.pts}점 · <a href="../">게임 목록</a></p>
       <div class="row"><button class="big dark" type="button">닫기</button></div>`;
     el.querySelector("button").onclick = () => done();
   });
+  // 첫 터치 때 소리·목소리를 깨운다 (아이폰은 사용자가 누르기 전엔 소리를 막는다)
+  let woke = false;
+  window.addEventListener("pointerdown", () => {
+    if (woke) return; woke = true;
+    audio();
+    try { if (sndMode === "all" && "speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); } } catch (e) {}
+  }, { capture: true });
 
-  // 테스트용 읽기 훅
-  window.__matgo = { get G() { return G; }, setDelay(ms) { D = ms; }, score, CARDS };
+  // 테스트용 훅
+  window.__matgo = { get G() { return G; }, setDelay(ms) { D = ms; MOVE = Math.min(MOVE, Math.max(30, ms * 0.6)); }, score, CARDS, fit };
 
-  renderRecord();
+  buildCards();
+  fit();
   newRound(ME, 0);
 })();
 </script>
