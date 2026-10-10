@@ -109,5 +109,14 @@
 
   <footer>© 2026 yangduckduck-source · 플레이와 공유는 자유, 코드 재사용은 금지 (<a href="https://github.com/yangduckduck-source/bug-free-octo-broccoli/blob/main/LICENSE">LICENSE</a>)</footer>
 </main>
+<script>
+  // 게임 링크에 들어갈 때마다 버전 표시(?v=시각)를 붙인다.
+  // 휴대폰이 예전에 받아 둔 게임 파일을 다시 쓰지 않고 늘 최신 판을 받아오게 하려는 것.
+  document.querySelectorAll("a.tile").forEach(a => {
+    const base = a.getAttribute("href");
+    const stamp = () => { a.href = base + "?v=" + Date.now().toString(36); };
+    stamp(); a.addEventListener("pointerdown", stamp); a.addEventListener("click", stamp);
+  });
+</script>
 </body>
 </html>

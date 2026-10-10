@@ -156,11 +156,20 @@
     pitch() { noise("bandpass", 600, 1, 0.25, 0.08, 0, 1800); },
     swing() { noise("bandpass", 500, 0.8, 0.18, 0.22, 0, 2400, 0.02); },
     mitt() { noise("lowpass", 900, 0.7, 0.09, 0.6); tone(110, 0.1, "sine", 0.35, 0, 60); },     // 미트에 꽂히는 퍽
-    crack(power) {    // 배트에 맞는 딱!
-      noise("highpass", 2500, 0.8, 0.05, 0.7 * power); tone(1900, 0.06, "triangle", 0.25 * power, 0, 1200);
-      noise("bandpass", 1200, 2, 0.12, 0.3 * power, 0.005); tone(240, 0.12, "sine", 0.3 * power, 0, 120);
-      if (power > 1.1) noise("highpass", 2200, 0.8, 0.25, 0.12, 0.09);   // 경기장 메아리
+    // 알루미늄 배트 "깡!": 순간 접촉음 + 금속관이 우는 비조화 배음(1 : 2.76 : 5.4) + 짧은 몸통 울림
+    ping(power = 1, ring = 1) {
+      const f = 1650 + power * 260;
+      noise("highpass", 5200, 0.7, 0.018, 0.9 * power, 0, 0, 0.001);       // 딱 맞는 찰나
+      noise("bandpass", 3200, 3, 0.05, 0.35 * power, 0, 0, 0.001);
+      tone(f, 0.34 * ring, "sine", 0.26 * power, 0, f * 0.97);
+      tone(f * 2.76, 0.2 * ring, "sine", 0.13 * power, 0, f * 2.76 * 0.98);
+      tone(f * 5.4, 0.1 * ring, "sine", 0.07 * power);
+      tone(f * 1.51, 0.16 * ring, "triangle", 0.06 * power);
+      tone(f * 0.25, 0.05, "triangle", 0.18 * power, 0, f * 0.15);          // 손에 오는 짧은 반동
+      if (power > 1.1) { tone(f, 0.32, "sine", 0.06, 0.12, f * 0.97); tone(f * 2.76, 0.16, "sine", 0.025, 0.12); }   // 관중석에 부딪혀 돌아오는 "깡" 메아리
     },
+    crack(power) { this.ping(power, 0.8 + power * 0.4); },
+    tip() { this.ping(0.55, 0.35); },                // 빗맞은 "팅" (파울·범타)
     dull() { noise("bandpass", 700, 1.5, 0.09, 0.45); tone(300, 0.08, "triangle", 0.2, 0, 180); },
     crowd(vol = 0.2, dur = 1.6) { noise("bandpass", 900, 0.6, dur, vol, 0, 0, dur * 0.25); noise("bandpass", 2200, 0.8, dur * 0.8, vol * 0.5, 0.05, 0, dur * 0.2); },
     groan() { noise("lowpass", 500, 0.7, 0.9, 0.15, 0, 0, 0.2); },
@@ -450,13 +459,13 @@
       case "double": sfx.crack(1.1);  sfx.crowd(0.14, 1.0); launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34)); break;
       case "single": sfx.crack(0.95); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
       case "out": {
-        sfx.dull();
+        sfx.tip();
         P.fly = Math.random() < 0.55;
         launch(P.fly ? rand(24, 30) : rand(16, 22), P.fly ? rand(38, 55) : rand(-8, 2), (late ? 1 : -1) * rand(0, 35));
         break;
       }
       case "foul": {
-        sfx.dull();
+        sfx.tip();
         P.back = Math.random() < 0.4;
         if (P.back) launch(rand(18, 26), rand(55, 75), 180 + rand(-25, 25));
         else launch(rand(22, 30), rand(10, 30), (late ? 1 : -1) * rand(50, 70));
