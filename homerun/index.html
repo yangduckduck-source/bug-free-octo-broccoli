@@ -118,8 +118,8 @@
   const MODES = ["all", "sfx", "off"], LABEL = { all: "소리·목소리", sfx: "효과음만", off: "소리 끔" };
   let mode = store.get("homerun.snd"); if (!MODES.includes(mode)) mode = "all";
   let actx = null, master = null, noiseBuf = null;
-  function audio() {
-    if (mode === "off") return null;
+  // 오디오 엔진은 페이지가 뜨자마자 만들어 둔다(멈춘 상태). 녹음은 이 엔진으로 미리 풀고, 소리는 첫 터치 때 깨운다
+  function initAudio() {
     try {
       if (!actx) {
         actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -128,9 +128,14 @@
         noiseBuf = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate);
         const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
       }
-      if (actx.state === "suspended") actx.resume();
       return actx;
     } catch (e) { return null; }
+  }
+  function audio() {
+    if (mode === "off") return null;
+    const a = initAudio(); if (!a) return null;
+    try { if (a.state !== "running") a.resume(); } catch (e) {}
+    return a;
   }
   function tone(f, dur, type = "sine", vol = 0.1, delay = 0, to = 0) {
     const a = audio(); if (!a) return;
@@ -183,19 +188,22 @@
     "안타!": "single", "2루타!": "double", "홈런!": "hr", "아웃!": "out", "삼진 아웃!": "k", "게임 셋!": "over" };
   // 녹음은 페이지가 뜨자마자 오프라인 컨텍스트로 풀어 둔다 (첫 "플레이볼!"부터 녹음으로 나가게)
   const clips = {}, clipPlays = []; let curClip = null;
-  (function decodeClips() {
-    try {
-      const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OAC) return;
-      const oc = new OAC(1, 44100, 44100);
-      for (const k in VOICE_MP3) {
+  let clipsTried = false;
+  function decodeClips() {
+    if (clipsTried) return; const a = initAudio(); if (!a) return; clipsTried = true;
+    for (const k in VOICE_MP3) {
+      try {
         const bin = atob(VOICE_MP3[k]), u = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-        const r = oc.decodeAudioData(u.buffer, b => { clips[k] = b; }, () => {});
+        // 아이폰(웹킷)은 콜백 방식만 확실하다 → 콜백으로 받고, 프라미스는 거부만 삼킨다
+        const r = a.decodeAudioData(u.buffer, b => { clips[k] = b; }, () => {});
         if (r && r.catch) r.catch(() => {});
-      }
-    } catch (e) {}
-  })();
+      } catch (e) {}
+    }
+  }
+  decodeClips();
   function playClip(k) {
+    decodeClips();
     const a = audio(), b = clips[k]; if (!a || !b) return false;
     try {
       if (curClip) { try { curClip.stop(); } catch (e) {} }
@@ -229,7 +237,16 @@
       else { const u = new SpeechSynthesisUtterance(" "); u.lang = "ko-KR"; u.volume = 0; speechSynthesis.speak(u); }
     } catch (e) {}
   }
-  ["pointerup", "touchend", "click", "keydown"].forEach(ev => window.addEventListener(ev, unlockSpeech, { capture: true, passive: true }));
+  // 아이폰: 손을 뗄 때 오디오 엔진도 깨우고, 무음 스위치가 켜져 있어도 게임 소리가 나도록 재생 세션으로 둔다
+  function unlockAudio() {
+    if (mode === "off") return;
+    try { if (navigator.audioSession && navigator.audioSession.type !== "playback") navigator.audioSession.type = "playback"; } catch (e) {}
+    const a = initAudio(); try { if (a && a.state !== "running") a.resume(); } catch (e) {}
+  }
+  ["pointerup", "touchend", "click", "keydown"].forEach(ev => {
+    window.addEventListener(ev, unlockSpeech, { capture: true, passive: true });
+    window.addEventListener(ev, unlockAudio, { capture: true, passive: true });
+  });
   function utter(t, lift, plain) {
     const u = new SpeechSynthesisUtterance(t); u.lang = "ko-KR";
     const male = !plain && voiceMale;
