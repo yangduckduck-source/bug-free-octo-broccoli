@@ -547,18 +547,19 @@
 
   // ================= 사람 골격 =================
   // 관절을 실제 3차원(미터) 공간에 두고, 동작마다 자세(키프레임)를 정해 그 사이를 부드럽게 잇는다.
-  // 그릴 때는 경기장과 같은 원근(proj)으로 투영하고, 먼 부위부터 칠한다.
+  // 팔다리는 굵기가 변하는 원통(허벅지 굵고 종아리 가늘게)으로, 조명 쪽은 밝게 반대쪽은 어둡게 칠한다.
   const V = (x, y, z) => ({ x, y, z });
   const add = (a, b) => V(a.x + b.x, a.y + b.y, a.z + b.z);
+  const sub = (a, b) => V(a.x - b.x, a.y - b.y, a.z - b.z);
   const mul = (a, s) => V(a.x * s, a.y * s, a.z * s);
+  const lerp3 = (a, b, t) => add(a, mul(sub(b, a), t));
   const norm = a => { const l = Math.hypot(a.x, a.y, a.z) || 1; return V(a.x / l, a.y / l, a.z / l); };
   const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-  function mix(a, b, t) {      // 숫자·벡터가 섞인 자세 두 개를 보간
+  function mix(a, b, t) {
     const o = {};
     for (const k in a) o[k] = typeof a[k] === "number" ? a[k] + (b[k] - a[k]) * t : V(a[k].x + (b[k].x - a[k].x) * t, a[k].y + (b[k].y - a[k].y) * t, a[k].z + (b[k].z - a[k].z) * t);
     return o;
   }
-  // keys: [[시각, 자세], ...] 시각 순. 구간마다 가속·감속을 넣는다.
   function poseAt(keys, t, curve = ease) {
     if (t <= keys[0][0]) return keys[0][1];
     for (let i = 1; i < keys.length; i++) if (t <= keys[i][0]) {
@@ -567,52 +568,105 @@
     }
     return keys[keys.length - 1][1];
   }
-  // 팔꿈치·무릎: 두 끝점 사이를 bend 방향으로 꺾는다
-  function joint(a, b, len, bend) {
+  function joint(a, b, len, bend) {          // 팔꿈치·무릎: 길이를 지키며 bend 쪽으로 꺾는다
     const mid = mul(add(a, b), 0.5);
     const d = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
     const h = Math.sqrt(Math.max(0, len * len - (d / 2) * (d / 2)));
     return add(mid, mul(norm(bend), h));
   }
-
-  // 원근 투영 + 크기 배율(투수는 멀어서 조금 키운다)
   function makeProjector(ox, od, scale = 1) {
     const base = proj(ox, 0, od);
     return p => {
       const q = proj(ox + p.x, p.y, od + p.z);
-      return { x: base.x + (q.x - base.x) * scale, y: base.y + (q.y - base.y) * scale, k: q.k * scale, d: od + p.z };
+      return { x: base.x + (q.x - base.x) * scale, y: base.y + (q.y - base.y) * scale, k: q.k * scale };
     };
   }
-  function limb(c, pr, a, b, w, col) {
+  const LIGHT = { x: 0.6, y: -0.8 };         // 조명: 오른쪽 위
+  // 굵기가 변하는 원통 한 토막 (A쪽 반지름 ra, B쪽 rb, 단위 m)
+  function capsule(c, pr, a, b, ra, rb, col, shade = true) {
     const A = pr(a), B = pr(b);
-    c.strokeStyle = col; c.lineWidth = Math.max(1.2, w * (A.k + B.k) / 2); c.lineCap = "round";
-    c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(B.x, B.y); c.stroke();
+    const r0 = Math.max(0.8, ra * A.k), r1 = Math.max(0.8, rb * B.k);
+    const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 0.001, ang = Math.atan2(dy, dx);
+    const path = (x0, y0, q0, x1, y1, q1) => { c.beginPath(); c.arc(x0, y0, q0, ang + Math.PI / 2, ang - Math.PI / 2); c.arc(x1, y1, q1, ang - Math.PI / 2, ang + Math.PI / 2); c.closePath(); };
+    path(A.x, A.y, r0, B.x, B.y, r1);
+    c.fillStyle = col; c.fill();
+    c.lineWidth = Math.max(0.6, (r0 + r1) * 0.07); c.strokeStyle = "rgba(10,12,24,.75)"; c.stroke();
+    if (!shade || L < 1) return;
+    let nx = -dy / L, ny = dx / L;
+    if (nx * LIGHT.x + ny * LIGHT.y < 0) { nx = -nx; ny = -ny; }
+    c.save(); path(A.x, A.y, r0, B.x, B.y, r1); c.clip();
+    c.fillStyle = "rgba(0,0,0,.16)";               // 그늘
+    path(A.x - nx * r0 * 0.75, A.y - ny * r0 * 0.75, r0 * 0.7, B.x - nx * r1 * 0.75, B.y - ny * r1 * 0.75, r1 * 0.7); c.fill();
+    c.fillStyle = "rgba(255,255,255,.32)";         // 빛
+    path(A.x + nx * r0 * 0.45, A.y + ny * r0 * 0.45, r0 * 0.32, B.x + nx * r1 * 0.45, B.y + ny * r1 * 0.45, r1 * 0.32); c.fill();
+    c.restore();
   }
-  // 그릴 것들을 깊이 순(먼 것 먼저)으로
+  function ball3(c, pr, p, r, col) {
+    const q = pr(p), rr = Math.max(1, r * q.k);
+    c.fillStyle = col; c.beginPath(); c.arc(q.x, q.y, rr, 0, 7); c.fill();
+    c.lineWidth = Math.max(0.6, rr * 0.12); c.strokeStyle = "rgba(10,12,24,.75)"; c.stroke();
+    c.fillStyle = "rgba(255,255,255,.3)"; c.beginPath(); c.arc(q.x + rr * 0.3, q.y - rr * 0.35, rr * 0.38, 0, 7); c.fill();
+    return { q, rr };
+  }
   function paint(c, items) { items.sort((p, q) => q.d - p.d); for (const it of items) it.f(); }
 
+  // 공통 몸: 관절을 받아 유니폼 입은 사람으로 칠한다
+  // J: { hip, sc, lsh, rsh, lhp, rhp, lk, rk, lf, rf, le, re, lw, rw, head, fwd, lfo, rfo }  (l = 카메라에서 먼 쪽이 아니라 그 사람의 왼쪽)
+  function drawBody(c, pr, J, kit, extras) {
+    const it = [];
+    const P3 = (fn, z) => it.push({ d: z, f: fn });
+    const zOf = (...ps) => ps.reduce((a, p) => a + p.z, 0) / ps.length;
+    // 다리: 바지(넉넉) → 스타킹 → 스파이크
+    for (const s of ["l", "r"]) {
+      const hp = J[s + "hp"], k = J[s + "k"], f = J[s + "f"], fo = J[s + "fo"];
+      const sock = lerp3(k, f, 0.35);
+      P3(() => { capsule(c, pr, hp, k, 0.095, 0.075, kit.pants); }, zOf(hp, k));
+      P3(() => { capsule(c, pr, k, sock, 0.072, 0.062, kit.pants); capsule(c, pr, sock, f, 0.058, 0.048, kit.sock); }, zOf(k, f));
+      P3(() => { capsule(c, pr, add(f, V(0, 0.02, 0)), add(f, mul(fo, 0.2)), 0.05, 0.045, kit.shoe, false); }, zOf(f) - 0.01);
+    }
+    // 몸통: 어깨는 넓고 허리는 좁게. 어깨 폭은 몸을 돌린 정도에 따라 달라진다
+    P3(() => {
+      const shW = clamp(Math.hypot(pr(J.lsh).x - pr(J.rsh).x, pr(J.lsh).y - pr(J.rsh).y) / pr(J.sc).k / 2 + 0.05, 0.13, 0.19);   // 어깨가 풍선처럼 부풀지 않게
+      capsule(c, pr, J.hip, add(J.sc, V(0, -0.04, 0)), 0.15, shW, kit.jersey);
+      capsule(c, pr, J.lhp, J.rhp, 0.11, 0.11, kit.pants);                 // 엉덩이
+      const a = pr(J.lhp), b = pr(J.rhp);
+      c.strokeStyle = kit.belt; c.lineWidth = Math.max(1.5, 0.035 * a.k); c.beginPath(); c.moveTo(a.x, a.y - 0.07 * a.k); c.lineTo(b.x, b.y - 0.07 * b.k); c.stroke();
+      if (extras.torso) extras.torso();
+    }, zOf(J.hip, J.sc) + 0.01);
+    // 팔: 반소매 저지 → 언더셔츠 → 손
+    for (const s of ["l", "r"]) {
+      const sh = J[s + "sh"], e = J[s + "e"], w = J[s + "w"];
+      const sleeve = lerp3(sh, e, 0.55);
+      P3(() => { capsule(c, pr, sh, sleeve, 0.068, 0.062, kit.jersey); capsule(c, pr, sleeve, e, 0.052, 0.047, kit.under); }, zOf(sh, e));
+      P3(() => { capsule(c, pr, e, w, 0.046, 0.036, kit.under); }, zOf(e, w));
+      P3(() => { (extras[s + "hand"] || (() => ball3(c, pr, w, 0.045, kit.skin)))(); }, zOf(w) - 0.005);
+    }
+    // 목·머리
+    P3(() => { capsule(c, pr, J.sc, J.head, 0.05, 0.05, kit.skin, false); extras.head(); }, zOf(J.head) - 0.002);
+    if (extras.more) extras.more(it);
+    paint(c, it);
+  }
+
   // ---------- 투수 (오른손, 포수를 마주 봄) ----------
-  // th: 몸 돌림(90 = 옆으로 서서 왼어깨가 홈 쪽, 0 = 정면). lean: 홈 쪽으로 숙임.
-  // rh: 던지는 손, gh: 글러브 손, lf/rf: 왼발·오른발, lk/rk: 무릎 굽히는 방향
+  // th: 어깨 돌림(90 = 옆으로 서서 왼어깨가 홈 쪽, 0 = 정면), hth: 골반 돌림(어깨보다 먼저 돈다)
   const PK = {
-    set:     { th: 90, lean: 0.02, hip: V(0, 0.95, 0),     rh: V(-0.26, 1.28, 0.02),  gh: V(-0.26, 1.3, -0.04),  lf: V(0.02, 0, -0.24), rf: V(0, 0, 0.16) },
-    lift:    { th: 98, lean: -0.08, hip: V(0, 0.99, 0.04), rh: V(-0.22, 1.36, 0.06),  gh: V(-0.22, 1.38, 0.0),   lf: V(-0.12, 0.62, -0.12), rf: V(0, 0, 0.14) },
-    lowlift: { th: 92, lean: 0, hip: V(0, 0.96, 0.02),     rh: V(-0.24, 1.3, 0.04),   gh: V(-0.24, 1.32, -0.02),  lf: V(-0.02, 0.22, -0.2), rf: V(0, 0, 0.15) },
-    stride:  { th: 78, lean: 0.18, hip: V(0.04, 0.78, -0.42), rh: V(0.3, 1.5, 0.6),   gh: V(-0.22, 1.34, -0.7),   lf: V(0.3, 0, -0.98), rf: V(-0.06, 0, 0.14) },
-    release: { th: 8, lean: 0.5, hip: V(0.06, 0.8, -0.72),  rh: V(-0.34, 1.72, -0.98), gh: V(0.3, 1.08, -0.52),    lf: V(0.3, 0, -1.02), rf: V(-0.1, 0.06, -0.12) },
-    follow:  { th: -22, lean: 1.0, hip: V(0.08, 0.76, -0.86), rh: V(0.38, 0.62, -1.06), gh: V(0.34, 0.96, -0.58),  lf: V(0.3, 0, -1.02), rf: V(-0.16, 0.48, 0.12) },
+    set:     { th: 90, hth: 90, lean: 0.02, hip: V(0, 0.95, 0),       rh: V(-0.24, 1.26, 0.02),  gh: V(-0.25, 1.28, -0.05),  lf: V(0.02, 0, -0.24), rf: V(0, 0, 0.16) },
+    lift:    { th: 100, hth: 96, lean: -0.1, hip: V(0, 0.99, 0.05),   rh: V(-0.2, 1.36, 0.06),   gh: V(-0.21, 1.38, 0.0),    lf: V(-0.14, 0.6, -0.08), rf: V(0, 0, 0.14) },
+    lowlift: { th: 92, hth: 92, lean: 0, hip: V(0, 0.96, 0.02),       rh: V(-0.23, 1.3, 0.04),   gh: V(-0.24, 1.32, -0.02),  lf: V(-0.02, 0.2, -0.2), rf: V(0, 0, 0.15) },
+    stride:  { th: 84, hth: 55, lean: 0.16, hip: V(0.04, 0.78, -0.42), rh: V(0.3, 1.5, 0.58),    gh: V(-0.24, 1.34, -0.68),  lf: V(0.28, 0, -0.98), rf: V(-0.06, 0, 0.14) },
+    release: { th: 4, hth: -6, lean: 0.52, hip: V(0.06, 0.8, -0.72),  rh: V(-0.32, 1.72, -1.0),  gh: V(0.3, 1.08, -0.5),     lf: V(0.28, 0, -1.02), rf: V(-0.1, 0.07, -0.14) },
+    follow:  { th: -26, hth: -20, lean: 1.0, hip: V(0.08, 0.76, -0.86), rh: V(0.38, 0.6, -1.06), gh: V(0.34, 0.95, -0.56),   lf: V(0.28, 0, -1.02), rf: V(-0.16, 0.5, 0.12) },
   };
-  // 사이드암: 팔이 옆으로 낮게
   const PK_SIDE = {
-    stride:  { ...PK.stride, rh: V(0.24, 1.28, 0.58) },
-    release: { ...PK.release, lean: 0.32, rh: V(-0.82, 1.34, -0.82) },
-    follow:  { ...PK.follow, lean: 0.7, rh: V(0.42, 0.82, -1.0) },
+    stride:  { ...PK.stride, rh: V(0.34, 1.26, 0.56) },
+    release: { ...PK.release, lean: 0.32, rh: V(-0.84, 1.34, -0.82) },
+    follow:  { ...PK.follow, lean: 0.72, rh: V(0.44, 0.82, -1.0) },
   };
   function pitcherPose() {
     if (!P) return PK.set;
     const side = P.motion === "side", K = side ? { ...PK, ...PK_SIDE } : PK;
     const lift = P.motion === "quick" ? PK.lowlift : PK.lift;
-    const bob = { ...lift, hip: add(lift.hip, V(0, Math.sin(now / 90) * 0.006, 0)) };   // 멈칫할 때 미세하게 흔들림
+    const bob = { ...lift, hip: add(lift.hip, V(0, Math.sin(now / 90) * 0.006, 0)) };
     return poseAt([
       [P.tLift, K.set], [P.tHold, lift], [P.tStride, bob],
       [P.tStride + (P.tRel - P.tStride) * 0.62, K.stride], [P.tRel, K.release],
@@ -620,138 +674,144 @@
     ], now);
   }
   function pitcherJoints(p) {
-    const th = p.th * Math.PI / 180;
-    const axis = V(-Math.cos(th), 0, Math.sin(th));            // 왼어깨 → 오른어깨
-    const fwd = V(-Math.sin(th), 0, -Math.cos(th));            // 가슴이 향한 쪽
-    const sc = add(p.hip, V(0, 0.52 * Math.cos(p.lean), -0.52 * Math.sin(p.lean)));   // 어깨 중심
-    const ls = add(sc, mul(axis, -0.19)), rs = add(sc, mul(axis, 0.19));
-    const hipAxis = V(-Math.cos(th * 0.75), 0, Math.sin(th * 0.75));
-    const lh = add(p.hip, mul(hipAxis, -0.11)), rhp = add(p.hip, mul(hipAxis, 0.11));
+    const th = p.th * Math.PI / 180, hth = p.hth * Math.PI / 180;
+    const axis = V(-Math.cos(th), 0, Math.sin(th)), fwd = V(-Math.sin(th), 0, -Math.cos(th));
+    const hAxis = V(-Math.cos(hth), 0, Math.sin(hth)), hFwd = V(-Math.sin(hth), 0, -Math.cos(hth));
+    const sc = add(p.hip, V(0, 0.5 * Math.cos(p.lean), -0.5 * Math.sin(p.lean)));
+    const lsh = add(sc, mul(axis, -0.2)), rsh = add(sc, mul(axis, 0.2));
+    const lhp = add(p.hip, mul(hAxis, -0.11)), rhp = add(p.hip, mul(hAxis, 0.11));
     return {
-      sc, ls, rs, lh, rhp, fwd,
-      head: add(sc, V(0, 0.24 * Math.cos(p.lean * 0.8), -0.24 * Math.sin(p.lean * 0.8))),
-      le: joint(ls, p.gh, 0.3, add(V(0, -1, 0), mul(fwd, -0.4))), re: joint(rs, p.rh, 0.3, add(V(0, -0.6, 0), mul(axis, 0.7))),
-      lk: joint(lh, p.lf, 0.47, add(fwd, V(0, 0.3, -0.6))), rk: joint(rhp, p.rf, 0.47, add(fwd, V(0, 0, -0.4))),
+      hip: p.hip, sc, lsh, rsh, lhp, rhp, fwd,
+      head: add(sc, V(0, 0.25 * Math.cos(p.lean * 0.8), -0.25 * Math.sin(p.lean * 0.8))),
+      le: joint(lsh, p.gh, 0.3, add(V(0, -1, 0), mul(fwd, -0.4))), re: joint(rsh, p.rh, 0.3, add(V(0, -0.6, 0), mul(axis, 0.8))),
+      lw: p.gh, rw: p.rh,
+      lk: joint(lhp, p.lf, 0.46, add(hFwd, V(0, 0.25, -0.6))), rk: joint(rhp, p.rf, 0.46, add(hFwd, V(0, 0, -0.4))),
+      lf: p.lf, rf: p.rf, lfo: norm(add(hFwd, V(0, 0, -0.3))), rfo: norm(add(hAxis, hFwd)),
     };
   }
+  const PITCHER_KIT = { jersey: "#f4f4f2", pants: "#e9e9e4", under: "#1d3a8a", sock: "#1d3a8a", shoe: "#151515", belt: "#1d3a8a", skin: "#e2ae84" };
   let lastHand = null;
   function drawPitcher(c) {
     const p = pitcherPose(), J = pitcherJoints(p);
-    const pr = makeProjector(0, MOUND_D, 1.4);
-    const UNI = "#f2f2f2", NAVY = "#1d3a8a", SKIN = "#e8b98f", SHOE = "#151515";
-    // 그림자
-    const g0 = pr(V(0, 0, -0.3));
-    c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.ellipse(g0.x, g0.y + 1, 16, 3, 0, 0, 7); c.fill();
-    const it = [];
-    const seg = (a, b, w, col) => it.push({ d: MOUND_D + (a.z + b.z) / 2, f: () => limb(c, pr, a, b, w, col) });
-    // 다리
-    seg(J.lh, J.lk, 0.17, UNI); seg(J.lk, p.lf, 0.14, UNI); seg(p.lf, add(p.lf, mul(J.fwd, 0.12)), 0.1, SHOE);
-    seg(J.rhp, J.rk, 0.17, UNI); seg(J.rk, p.rf, 0.14, UNI); seg(p.rf, add(p.rf, mul(J.fwd, 0.12)), 0.1, SHOE);
-    // 몸통
-    it.push({ d: MOUND_D + p.hip.z + 0.01, f: () => {
-      limb(c, pr, p.hip, J.sc, 0.34, UNI);
-      const a = pr(J.lh), b = pr(J.rhp); c.strokeStyle = NAVY; c.lineWidth = 2; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
-    } });
-    // 팔
-    seg(J.ls, J.le, 0.1, UNI); seg(J.le, p.gh, 0.09, UNI);
-    it.push({ d: MOUND_D + p.gh.z, f: () => { const q = pr(p.gh); c.fillStyle = "#6b3b1c"; c.beginPath(); c.arc(q.x, q.y, Math.max(2.5, 0.08 * q.k), 0, 7); c.fill(); } });
-    seg(J.rs, J.re, 0.1, UNI); seg(J.re, p.rh, 0.09, UNI);
-    it.push({ d: MOUND_D + p.rh.z - 0.01, f: () => { const q = pr(p.rh); c.fillStyle = SKIN; c.beginPath(); c.arc(q.x, q.y, Math.max(1.8, 0.05 * q.k), 0, 7); c.fill(); } });
-    // 머리·모자
-    it.push({ d: MOUND_D + J.head.z, f: () => {
-      const q = pr(J.head), r = Math.max(3, 0.11 * q.k);
-      c.fillStyle = SKIN; c.beginPath(); c.arc(q.x, q.y, r, 0, 7); c.fill();
-      c.fillStyle = NAVY; c.beginPath(); c.arc(q.x, q.y - r * 0.25, r * 1.02, Math.PI, 0); c.fill();
-      const v = pr(add(J.head, add(mul(J.fwd, 0.13), V(0, 0.04, 0)))); c.strokeStyle = NAVY; c.lineWidth = r * 0.5; c.beginPath(); c.moveTo(q.x, q.y - r * 0.2); c.lineTo(v.x, v.y - r * 0.2); c.stroke();
-    } });
-    paint(c, it);
-    lastHand = pr(p.rh);
+    const pr = makeProjector(0, MOUND_D, 1.45);
+    const g0 = pr(V(0.1, 0, -0.4));
+    c.fillStyle = "rgba(0,0,0,.28)"; c.beginPath(); c.ellipse(g0.x, g0.y + 1, 18, 3.5, 0, 0, 7); c.fill();
+    drawBody(c, pr, J, PITCHER_KIT, {
+      lhand: () => {          // 글러브
+        const q = pr(J.lw), r = Math.max(2.5, 0.085 * q.k);
+        c.fillStyle = "#7a4520"; c.beginPath(); c.ellipse(q.x, q.y, r, r * 1.15, 0.3, 0, 7); c.fill();
+        c.strokeStyle = "rgba(10,12,24,.75)"; c.lineWidth = 0.8; c.stroke();
+        c.strokeStyle = "#4a2810"; c.beginPath(); c.moveTo(q.x - r * 0.5, q.y); c.lineTo(q.x + r * 0.5, q.y); c.stroke();
+      },
+      rhand: () => { const { q, rr } = ball3(c, pr, J.rw, 0.042, PITCHER_KIT.skin); if (P && now < P.tRel) { c.fillStyle = "#fff"; c.beginPath(); c.arc(q.x - rr * 0.2, q.y - rr * 0.2, rr * 0.55, 0, 7); c.fill(); } },
+      torso: () => {           // 가슴 번호
+        const m = pr(add(lerp3(J.hip, J.sc, 0.6), mul(J.fwd, 0.13)));
+        if (J.fwd.z < -0.2) { c.fillStyle = "#1d3a8a"; c.font = `900 ${Math.max(5, 0.16 * m.k)}px sans-serif`; c.textAlign = "center"; c.fillText("1", m.x, m.y + 0.05 * m.k); }
+      },
+      head: () => {            // 얼굴·모자(챙)
+        const h = J.head, q = pr(h), r = Math.max(2.6, 0.11 * q.k);
+        c.fillStyle = PITCHER_KIT.skin; c.beginPath(); c.arc(q.x, q.y, r, 0, 7); c.fill();
+        c.strokeStyle = "rgba(10,12,24,.75)"; c.lineWidth = 0.7; c.stroke();
+        c.fillStyle = "#1d3a8a"; c.beginPath(); c.arc(q.x, q.y - r * 0.15, r * 1.04, Math.PI * 1.02, Math.PI * 1.98); c.fill();
+        const v = pr(add(h, add(mul(J.fwd, 0.15), V(0, 0.05, 0))));
+        c.strokeStyle = "#162c6b"; c.lineWidth = Math.max(1.2, r * 0.45); c.lineCap = "round"; c.beginPath(); c.moveTo(q.x, q.y - r * 0.2); c.lineTo(v.x, v.y - r * 0.15); c.stroke();
+      },
+    });
+    lastHand = pr(J.rw);
     return { hand: lastHand };
   }
-  // 공이 나가는 지점: 던지는 손의 '놓는 순간' 자세
   function releasePoint(side) {
     const r = (side ? PK_SIDE.release : PK.release).rh;
     return { x: r.x, y: r.y, d: MOUND_D + r.z };
   }
 
   // ---------- 타자 (오른손, 포수 쪽에서 본 모습) ----------
-  // 홈플레이트 왼쪽에 서서 홈 쪽(+x)을 본다. th: 몸통 돌림(0 = 옆으로, 90 = 투수를 정면으로)
-  const BX = -0.7, BD = 3.0;
+  // 홈플레이트 왼쪽에 서서 홈 쪽(+x)을 본다. th: 어깨 돌림(0 = 옆으로, 90 = 투수를 정면), hth: 골반(먼저 돈다)
+  const BX = -0.66, BD = 3.0;
   const BK_ = {
-    stance:  { th: 0, hip: V(0, 0.9, 0),       hands: V(-0.05, 1.46, -0.16), bat: V(-0.28, 0.82, -0.5),  ff: V(0.02, 0, 0.36), bf: V(0, 0, -0.34) },
-    load:    { th: -14, hip: V(-0.02, 0.88, -0.05), hands: V(-0.12, 1.44, -0.24), bat: V(-0.45, 0.72, -0.52), ff: V(0.02, 0.07, 0.3), bf: V(0, 0, -0.34) },
-    launch:  { th: 22, hip: V(0.02, 0.86, 0.04), hands: V(0.04, 1.18, -0.12), bat: V(-0.55, 0.12, -0.82),  ff: V(0.04, 0, 0.42), bf: V(0, 0.03, -0.34) },
-    contact: { th: 58, hip: V(0.04, 0.86, 0.08), hands: V(0.26, 1.02, 0.12),  bat: V(0.96, -0.08, 0.28),  ff: V(0.04, 0, 0.42), bf: V(0.06, 0.06, -0.3) },
-    extend:  { th: 88, hip: V(0.04, 0.87, 0.1),  hands: V(0.22, 1.12, 0.42),  bat: V(0.28, 0.12, 0.96),   ff: V(0.04, 0, 0.42), bf: V(0.1, 0.1, -0.26) },
-    finish:  { th: 112, hip: V(0.03, 0.9, 0.1),  hands: V(-0.12, 1.46, 0.3),  bat: V(-0.82, 0.42, -0.24), ff: V(0.04, 0, 0.42), bf: V(0.12, 0.12, -0.22) },
+    stance:  { th: 0, hth: 0, hip: V(0, 0.84, 0),        hands: V(-0.06, 1.42, -0.17), bat: V(-0.22, 0.86, -0.46), ff: V(0.02, 0, 0.38), bf: V(0, 0, -0.36) },
+    load:    { th: -16, hth: -8, hip: V(-0.03, 0.83, -0.06), hands: V(-0.13, 1.42, -0.26), bat: V(-0.42, 0.74, -0.52), ff: V(0.0, 0.1, 0.28), bf: V(0, 0, -0.36) },
+    launch:  { th: 18, hth: 48, hip: V(0.02, 0.8, 0.05),  hands: V(0.04, 1.16, -0.14), bat: V(-0.55, 0.14, -0.82),  ff: V(0.04, 0, 0.46), bf: V(0, 0.03, -0.36) },
+    contact: { th: 58, hth: 82, hip: V(0.04, 0.81, 0.09), hands: V(0.26, 1.0, 0.12),   bat: V(0.96, -0.08, 0.28),  ff: V(0.04, 0, 0.46), bf: V(0.07, 0.07, -0.3) },
+    extend:  { th: 90, hth: 95, hip: V(0.04, 0.83, 0.1),  hands: V(0.22, 1.1, 0.42),   bat: V(0.28, 0.12, 0.96),   ff: V(0.04, 0, 0.46), bf: V(0.12, 0.12, -0.24) },
+    finish:  { th: 116, hth: 100, hip: V(0.03, 0.86, 0.1), hands: V(-0.12, 1.44, 0.3), bat: V(-0.82, 0.42, -0.24), ff: V(0.04, 0, 0.46), bf: V(0.14, 0.14, -0.2) },
   };
   function batterPose() {
     const t = now;
-    const idle = { ...BK_.stance, bat: add(BK_.stance.bat, V(0, 0, Math.sin(t / 260) * 0.12)) };   // 배트를 까딱이며 기다림
+    const idle = { ...BK_.stance, bat: add(BK_.stance.bat, V(0, 0, Math.sin(t / 260) * 0.12)), hip: add(BK_.stance.hip, V(0, Math.sin(t / 520) * 0.008, 0)) };
     if (!P) return idle;
     if (P.swung) {
       const s = P.swingT;
       return poseAt([[s, BK_.load], [s + 40, BK_.launch], [s + 75, BK_.contact], [s + 125, BK_.extend], [s + 300, BK_.finish]], t, x => 1 - Math.pow(1 - x, 2));
     }
-    // 투수가 공을 놓을 때 배트를 당겨 준비하고, 안 치면 천천히 돌아온다
     return poseAt([[P.tRel - 200, idle], [P.tRel + 60, BK_.load], [P.tArr + 160, BK_.load], [P.tArr + 700, idle]], t);
   }
+  const BATTER_KIT = { jersey: "#efeff3", pants: "#e4e4ea", under: "#1f2a5c", sock: "#1f2a5c", shoe: "#111", belt: "#1f2a5c", skin: "#e2ae84" };
   function drawBatter(c) {
-    const p = batterPose(), th = p.th * Math.PI / 180;
+    const p = batterPose(), th = p.th * Math.PI / 180, hth = p.hth * Math.PI / 180;
     const chest = V(Math.cos(th), 0, Math.sin(th)), axis = V(-Math.sin(th), 0, Math.cos(th));   // axis: 뒤어깨 → 앞어깨
-    const sc = add(p.hip, V(0.04, 0.52, 0));
-    const fs = add(sc, mul(axis, 0.2)), bs = add(sc, mul(axis, -0.2));
-    const hipAxis = V(-Math.sin(th * 0.6), 0, Math.cos(th * 0.6));
-    const fh = add(p.hip, mul(hipAxis, 0.12)), bh = add(p.hip, mul(hipAxis, -0.12));
-    const head = add(sc, add(V(0, 0.25, 0), mul(chest, 0.03)));
-    const bat = norm(p.bat), grip = p.hands, tip = add(grip, mul(bat, 0.86)), knob = add(grip, mul(bat, -0.05));
-    const fe = joint(fs, grip, 0.31, add(V(0, -1, 0), mul(chest, -0.3)));
-    const be = joint(bs, grip, 0.31, add(V(0, -0.8, 0), mul(axis, -0.8)));
-    const fk = joint(fh, p.ff, 0.48, add(chest, V(0, 0, 0.3))), bk = joint(bh, p.bf, 0.48, add(chest, V(0, 0, -0.2)));
-    const pr = makeProjector(BX, BD, 0.88);
-    const UNI = "#ececf1", NAVY = "#1f2a5c", RED = "#c62f2f", SKIN = "#e8b98f";
-    const it = [];
-    const seg = (a, b, w, col) => it.push({ d: BD + (a.z + b.z) / 2, f: () => limb(c, pr, a, b, w, col) });
-    // 다리
-    seg(fh, fk, 0.2, UNI); seg(fk, p.ff, 0.16, UNI); seg(add(p.ff, V(0, 0.1, 0)), p.ff, 0.13, NAVY); seg(p.ff, add(p.ff, V(0.16, 0, 0.02)), 0.1, "#111");
-    seg(bh, bk, 0.2, UNI); seg(bk, p.bf, 0.16, UNI); seg(add(p.bf, V(0, 0.1, 0)), p.bf, 0.13, NAVY); seg(p.bf, add(p.bf, V(0.16, 0, 0)), 0.1, "#111");
-    // 몸통: 등번호는 등이 카메라 쪽으로 보일 때만
-    it.push({ d: BD + p.hip.z + 0.02, f: () => {
-      limb(c, pr, p.hip, sc, 0.36, UNI);
-      const a = pr(fh), b = pr(bh); c.strokeStyle = NAVY; c.lineWidth = Math.max(3, 0.05 * a.k); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
-      const back = -Math.sin(th);    // 등이 카메라를 향한 정도
-      if (back > -0.2 && th < 0.9) {
-        const m = pr(add(mul(add(p.hip, sc), 0.5), V(-0.08, 0.05, -0.12)));
-        c.fillStyle = RED; c.font = `${Math.round(0.2 * m.k)}px 'Black Han Sans', sans-serif`; c.textAlign = "center"; c.fillText("10", m.x, m.y + 0.06 * m.k);
-      }
-    } });
-    // 팔과 배트
-    seg(bs, be, 0.11, UNI); seg(be, grip, 0.1, UNI);
-    seg(fs, fe, 0.11, UNI); seg(fe, grip, 0.1, UNI);
-    it.push({ d: BD + (grip.z + tip.z) / 2 - 0.05, f: () => {
-      limb(c, pr, knob, tip, 0.065, "#c58a4b");
-      limb(c, pr, add(grip, mul(bat, 0.45)), tip, 0.075, "#d39a5a");
-      limb(c, pr, knob, add(grip, mul(bat, 0.12)), 0.05, "#5a3a1e");
-      const q = pr(grip); c.fillStyle = RED; c.beginPath(); c.arc(q.x, q.y, Math.max(4, 0.06 * q.k), 0, 7); c.fill();
-    } });
-    // 휘두른 자국
-    if (P && P.swung && now - P.swingT < 200 && now - P.swingT > 20) {
-      it.push({ d: BD - 1, f: () => {
-        c.save(); c.globalAlpha = 0.18 * (1 - (now - P.swingT) / 200); c.fillStyle = "#fff";
-        const pts = [];
-        for (let k = 0; k <= 8; k++) { const q = poseAt([[0, BK_.launch], [1, BK_.extend]], k / 8, x => x); pts.push(pr(add(q.hands, mul(norm(q.bat), 0.8)))); }
-        c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (const q of pts) c.lineTo(q.x, q.y); c.lineTo(pr(grip).x, pr(grip).y); c.fill(); c.restore();
-      } });
-    }
-    // 헬멧
-    it.push({ d: BD + head.z, f: () => {
-      const q = pr(head), r = 0.125 * q.k;
-      c.fillStyle = SKIN; c.beginPath(); c.arc(q.x + r * 0.15, q.y + r * 0.1, r * 0.9, 0, 7); c.fill();
-      c.fillStyle = NAVY; c.beginPath(); c.arc(q.x, q.y, r, Math.PI * 0.9, Math.PI * 2.15); c.fill();
-      c.fillStyle = "#33437f"; c.beginPath(); c.ellipse(q.x - r * 0.45, q.y + r * 0.2, r * 0.42, r * 0.5, 0, 0, 7); c.fill();   // 귀 덮개
-      c.fillStyle = "rgba(255,255,255,.25)"; c.beginPath(); c.arc(q.x - r * 0.3, q.y - r * 0.45, r * 0.22, 0, 7); c.fill();
-    } });
-    paint(c, it);
+    const hChest = V(Math.cos(hth), 0, Math.sin(hth)), hAxis = V(-Math.sin(hth), 0, Math.cos(hth));
+    const sc = add(p.hip, V(0.06, 0.52, 0));
+    const fsh = add(sc, mul(axis, 0.21)), bsh = add(sc, mul(axis, -0.21));
+    const fhp = add(p.hip, mul(hAxis, 0.12)), bhp = add(p.hip, mul(hAxis, -0.12));
+    const head = add(sc, add(V(0, 0.25, 0), mul(chest, 0.04)));
+    const bat = norm(p.bat), grip = p.hands;
+    const fe = joint(fsh, grip, 0.3, add(V(0, -1, 0), mul(chest, -0.3)));
+    const be = joint(bsh, grip, 0.3, add(V(0, -0.7, 0), mul(axis, -0.9)));
+    // 사람의 왼쪽(l) = 앞(투수 쪽). 무릎은 살짝 굽힌 준비 자세
+    const J = {
+      hip: p.hip, sc, lsh: fsh, rsh: bsh, lhp: fhp, rhp: bhp, head, fwd: chest,
+      le: fe, re: be, lw: add(grip, mul(bat, 0.07)), rw: grip,
+      lk: joint(fhp, p.ff, 0.47, add(hChest, V(0, 0, 0.25))), rk: joint(bhp, p.bf, 0.47, add(hChest, V(0, 0, -0.1))),
+      lf: p.ff, rf: p.bf, lfo: norm(add(hChest, V(0, 0, 0.4))), rfo: norm(add(hChest, V(0, 0, -0.1))),
+    };
+    const pr = makeProjector(BX, BD, 0.8);
+    const g0 = pr(V(0, 0, 0)); c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(g0.x, g0.y, 60, 12, 0, 0, 7); c.fill();
+    const tip = add(grip, mul(bat, 0.86)), knob = add(grip, mul(bat, -0.06)), barrel = add(grip, mul(bat, 0.5));
+    drawBody(c, pr, J, BATTER_KIT, {
+      lhand: () => ball3(c, pr, J.lw, 0.048, "#c62f2f"),      // 배팅 장갑
+      rhand: () => ball3(c, pr, J.rw, 0.048, "#c62f2f"),
+      torso: () => {
+        // 등이 카메라 쪽으로 보일 때 이름표와 등번호
+        if (th < 0.8) {
+          const m = pr(add(lerp3(p.hip, sc, 0.62), V(-0.1, 0, -0.06))), k = m.k;
+          c.save(); c.globalAlpha = clamp(1 - th / 0.8, 0, 1);
+          c.fillStyle = "#1f2a5c"; c.font = `900 ${Math.round(0.07 * k)}px sans-serif`; c.textAlign = "center"; c.fillText("YANG", m.x, m.y - 0.11 * k);
+          c.fillStyle = "#c62f2f"; c.font = `${Math.round(0.21 * k)}px 'Black Han Sans', sans-serif`; c.fillText("10", m.x, m.y + 0.08 * k);
+          c.restore();
+        }
+      },
+      head: () => {
+        const q = pr(head), r = 0.12 * q.k;
+        c.fillStyle = BATTER_KIT.skin; c.beginPath(); c.arc(q.x + r * 0.25, q.y + r * 0.15, r * 0.82, 0, 7); c.fill();
+        // 헬멧: 광택 + 귀 덮개 + 챙
+        const g = c.createRadialGradient(q.x - r * 0.3, q.y - r * 0.4, r * 0.1, q.x, q.y, r * 1.1);
+        g.addColorStop(0, "#4a5aa0"); g.addColorStop(1, "#141c44");
+        c.fillStyle = g; c.beginPath(); c.arc(q.x, q.y, r, Math.PI * 0.85, Math.PI * 2.2); c.closePath(); c.fill();
+        c.strokeStyle = "rgba(10,12,24,.8)"; c.lineWidth = 1; c.stroke();
+        c.fillStyle = "#1a2350"; c.beginPath(); c.ellipse(q.x - r * 0.42, q.y + r * 0.22, r * 0.4, r * 0.5, -0.2, 0, 7); c.fill(); c.stroke();
+        const v = pr(add(head, add(mul(chest, 0.17), V(0, 0.03, 0))));
+        c.strokeStyle = "#141c44"; c.lineWidth = r * 0.28; c.lineCap = "round"; c.beginPath(); c.moveTo(q.x + r * 0.2, q.y - r * 0.05); c.lineTo(v.x, v.y); c.stroke();
+        c.fillStyle = "rgba(255,255,255,.4)"; c.beginPath(); c.ellipse(q.x - r * 0.25, q.y - r * 0.5, r * 0.32, r * 0.16, -0.5, 0, 7); c.fill();
+      },
+      more: it => {
+        // 배트: 손잡이는 가늘고 배럴은 굵게. 손 앞쪽에 그린다
+        it.push({ d: (grip.z + tip.z) / 2 - 0.06, f: () => {
+          capsule(c, pr, knob, add(grip, mul(bat, 0.18)), 0.022, 0.02, "#6b4524", false);
+          capsule(c, pr, add(grip, mul(bat, 0.18)), barrel, 0.02, 0.032, "#c8904f");
+          capsule(c, pr, barrel, tip, 0.032, 0.034, "#d9a160");
+          ball3(c, pr, knob, 0.026, "#4a2e16");
+        } });
+        if (P && P.swung && now - P.swingT < 200 && now - P.swingT > 20) {
+          it.push({ d: -1, f: () => {
+            c.save(); c.globalAlpha = 0.16 * (1 - (now - P.swingT) / 200); c.fillStyle = "#fff";
+            const pts = [];
+            for (let k = 0; k <= 10; k++) { const q = poseAt([[0, BK_.launch], [1, BK_.extend]], k / 10, x => x); pts.push(pr(add(q.hands, mul(norm(q.bat), 0.84)))); }
+            c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (const q of pts) c.lineTo(q.x, q.y); c.lineTo(pr(grip).x, pr(grip).y); c.fill(); c.restore();
+          } });
+        }
+      },
+    });
   }
 
   function drawZone(c) {
@@ -829,7 +889,8 @@
   function drawMsg(c) {
     if (P && P.swung && P.delta != null && now - P.swingT < 1300) {
       const d = Math.round(P.delta), ad = Math.abs(d);
-      const t = ad <= WIN.hr ? "완벽!" : d < 0 ? `빠름 ${ad}ms` : `늦음 ${ad}ms`;
+      const ballMiss = P.result === "whiff" && ad <= WIN.foul;     // 타이밍은 맞았는데 존에서 너무 빠진 공
+      const t = ballMiss ? "존 밖 공" : ad <= WIN.hr ? "완벽!" : d < 0 ? `빠름 ${ad}ms` : `늦음 ${ad}ms`;
       c.font = "bold 18px sans-serif"; c.textAlign = "center"; c.fillStyle = ad <= WIN.hr ? "#ffcf3a" : "#ffffff";
       c.fillText(t, W / 2, 560);
     }
