@@ -167,8 +167,9 @@
   // 심판 목소리: 짧은 낱말만, 굵은 남자 목소리로
   // 기기 TTS 중 한국어 남성 음성을 이름으로 골라 쓰고, 없으면 여성 음성을 최대한 낮춰 흉내 낸다
   const MALE_VOICES = [/injoon|인준/i, /hyunsu|현수/i, /bongjin|봉진/i, /gookmin|국민/i, /minsu|민수/i, /grandpa|할아버지/i, /rocko/i, /reed/i, /eddy/i, /ko-kr-x-ko[cd]/i, /\bmale\b|남성|남자/i];
-  let voice = null, voiceMale = false;
+  let voice = null, voiceMale = false, voiceFail = 0;
   function pickVoice() {
+    if (voiceFail) return;
     try {
       const vs = speechSynthesis.getVoices().filter(v => /^ko/i.test(v.lang));
       voice = null; voiceMale = false;
@@ -177,16 +178,38 @@
     } catch (e) {}
   }
   if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+  // 모바일 브라우저는 '손가락을 뗀 순간' 같은 진짜 사용자 동작 안에서 한 번 말해야 음성이 풀린다
+  let speechReady = false, lastLine = null;
+  function unlockSpeech() {
+    if (speechReady || !("speechSynthesis" in window)) return;
+    try {
+      speechReady = true; speechSynthesis.resume();
+      // 풀리기 직전에 막힌 외침(누르자마자 나온 "플레이볼!")은 지금 다시, 아니면 무음 한 마디로 문만 연다
+      if (lastLine && performance.now() - lastLine.at < 1000 && mode === "all") speechSynthesis.speak(utter(lastLine.t, lastLine.lift, !voice));
+      else { const u = new SpeechSynthesisUtterance(" "); u.lang = "ko-KR"; u.volume = 0; speechSynthesis.speak(u); }
+    } catch (e) {}
+  }
+  ["pointerup", "touchend", "click", "keydown"].forEach(ev => window.addEventListener(ev, unlockSpeech, { capture: true, passive: true }));
+  function utter(t, lift, plain) {
+    const u = new SpeechSynthesisUtterance(t); u.lang = "ko-KR";
+    const male = !plain && voiceMale;
+    if (voice && !plain) u.voice = voice;
+    u.pitch = clamp((male ? 0.72 : 0.32) + lift, 0.1, 2);   // 남성 음성은 살짝만, 여성 음성은 바닥까지 낮춘다
+    u.rate = 0.92 + lift * 0.3; u.volume = 1;
+    // 고른 음성이 기기에서 안 돌면(네트워크 음성 등) 기본 음성으로 다시 말한다
+    if (!plain) u.onerror = e => { if (!/interrupted|canceled/.test(e.error || "")) { if (++voiceFail >= 1) voice = null; try { speechSynthesis.speak(utter(t, lift, true)); } catch (er) {} } };
+    return u;
+  }
   // lift: 홈런처럼 흥분한 외침은 조금 올린다
   function say(t, lift = 0) {
     if (mode !== "all" || !("speechSynthesis" in window)) return;
     try {
-      if (!voice) pickVoice();
-      if (speechSynthesis.pending || speechSynthesis.speaking) speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(t); u.lang = "ko-KR"; if (voice) u.voice = voice;
-      u.pitch = clamp((voiceMale ? 0.72 : 0.32) + lift, 0, 2);   // 남성 음성은 살짝만, 여성 음성은 바닥까지 낮춘다
-      u.rate = 0.92 + lift * 0.3; u.volume = 1;
-      speechSynthesis.speak(u);
+      if (!voice && !voiceFail) pickVoice();
+      lastLine = { t, lift, at: performance.now() };
+      if (!speechReady) return;     // 아직 잠겨 있으면 손을 떼는 순간 unlockSpeech가 대신 말한다
+      const go = () => { try { speechSynthesis.resume(); speechSynthesis.speak(utter(t, lift, !voice)); } catch (e) {} };
+      // 말하는 중에 끊고 곧장 말하면 크롬·사파리가 새 말까지 삼킨다 → 끊고 잠깐 쉰 뒤 말한다
+      if (speechSynthesis.speaking || speechSynthesis.pending) { speechSynthesis.cancel(); setTimeout(go, 90); } else go();
       sfx.pa();
     } catch (e) {}
   }
