@@ -41,7 +41,16 @@
     min-height: 40px; padding: 0 14px; border-radius: 999px; border: 0; cursor: pointer;
     background: rgba(255,255,255,.12); color: var(--ink); font: 700 15px var(--body);
   }
-  #snd:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
+  #time {
+    position: fixed; left: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 5;
+    min-height: 40px; padding: 0 18px; border-radius: 999px; border: 0; cursor: pointer;
+    background: var(--led); color: #1a1406; font: 900 16px var(--body);
+  }
+  #time.hidden { display: none; }
+  .btns { display: flex; gap: 10px; margin-top: 10px; }
+  .btns button { min-height: 52px; padding: 0 26px; border-radius: 16px; border: 0; cursor: pointer; font: 900 18px var(--body); background: var(--led); color: #1a1406; }
+  .btns button.ghost { background: rgba(255,255,255,.14); color: var(--ink); }
+  #time:focus-visible, .btns button:focus-visible, #snd:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -63,6 +72,13 @@
 </div>
 
 <button id="snd" type="button">소리·목소리</button>
+<button id="time" type="button" class="hidden">타임</button>
+
+<div class="overlay hidden" id="pause" style="pointer-events:auto">
+  <h2>타임</h2>
+  <p>경기가 멈췄습니다.</p>
+  <div class="btns"><button type="button" id="resume">계속하기</button><button type="button" id="restart" class="ghost">처음부터</button></div>
+</div>
 
 <script>
 (() => {
@@ -195,10 +211,15 @@
   let state = "title";     // title | play | over
   let best = Number(store.get("homerun.best")) || 0;
   let G, P, fx, msg, now = performance.now();
+  let paused = false, pauseAcc = 0, pauseStart = 0;
+  const gameNow = () => (paused ? pauseStart : performance.now()) - pauseAcc;
+  // 경기 시계 기준 예약 (타임 중엔 흐르지 않는다)
+  let timers = [];
+  const later = (fn, ms) => timers.push({ at: now + ms, fn });
 
   function newGame() {
     G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], pitches: 0, level: 1, hits: 0, hr: 0, pool: ["fast"], motions: ["windup"], batters: 1, combo: 0 };
-    fx = []; msg = null; P = null;
+    fx = []; msg = null; P = null; timers = [];
     nextPitch(900);
   }
 
@@ -232,7 +253,7 @@
       ty = side === "high" ? ZONE.y1 + off : side === "low" ? ZONE.y0 - off : rand(ZONE.y0, ZONE.y1);
     }
     const side = motion === "side";
-    const rel = { x: side ? -1.05 : -0.42, y: side ? 1.35 : 1.95, d: MOUND_D - 1.6 };
+    const rel = releasePoint(side);
     const flight = (18.44 / (kmh / 3.6)) * 1000;     // 날아오는 시간(ms)
     // 모션 시간표: 준비 → (다리 들기·멈칫) → 내딛기 → 놓기
     const setT = rand(500, 1100);
@@ -262,18 +283,40 @@
     if (state === "title") { start(); return; }
     if (state === "over") { if (now - overAt > 900) start(); return; }
     if (!P || P.swung || P.done || P.result) return;
-    const t = ev && ev.timeStamp && Math.abs(ev.timeStamp - performance.now()) < 1000 ? ev.timeStamp : performance.now();
+    if (paused) return;
+    const raw = ev && ev.timeStamp && Math.abs(ev.timeStamp - performance.now()) < 1000 ? ev.timeStamp : performance.now();
+    const t = raw - pauseAcc;                 // 경기 시계로 바꾼다
     if (t < P.tRel - 120) return;            // 공을 놓기도 전에 누르면 무시
     P.swung = true; P.swingT = t;
     sfx.swing();
     judge(t - P.tArr);
   }
-  window.addEventListener("keydown", e => { if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); if (!e.repeat) press(e); } });
-  window.addEventListener("pointerdown", e => { if (e.target === sndBtn) return; e.preventDefault(); press(e); });
+  window.addEventListener("keydown", e => {
+    if (e.code === "Escape" || e.code === "KeyP") { if (state === "play") setPause(!paused); return; }
+    if (e.code === "Space" || e.code === "Enter") { if (paused) return; e.preventDefault(); if (!e.repeat) press(e); }
+  });
+  window.addEventListener("pointerdown", e => { if (e.target.closest && e.target.closest("button")) return; e.preventDefault(); press(e); });
+
+  // ================= 타임 =================
+  const timeBtn = $("#time");
+  function setPause(on) {
+    if (on === paused || state !== "play") return;
+    if (on) { pauseStart = performance.now(); paused = true; try { speechSynthesis.cancel(); } catch (e) {} if (actx) actx.suspend(); }
+    else { pauseAcc += performance.now() - pauseStart; paused = false; if (actx && mode !== "off") actx.resume(); }
+    $("#pause").classList.toggle("hidden", !on);
+    timeBtn.classList.toggle("hidden", on);
+    if (on) $("#resume").focus();
+  }
+  timeBtn.addEventListener("click", e => { e.stopPropagation(); setPause(true); });
+  $("#resume").addEventListener("click", e => { e.stopPropagation(); setPause(false); });
+  $("#restart").addEventListener("click", e => { e.stopPropagation(); setPause(false); start(); });
+  // 다른 앱·탭으로 가면 저절로 타임
+  document.addEventListener("visibilitychange", () => { if (document.hidden) setPause(true); });
 
   function start() {
     state = "play";
     $("#title").classList.add("hidden"); $("#over").classList.add("hidden");
+    timeBtn.classList.remove("hidden");
     audio();
     newGame();
     say("플레이볼!", 0.9);
@@ -302,7 +345,7 @@
     const late = P.delta > 0;
     switch (kind) {
       case "hr": {
-        sfx.crack(1.4); sfx.crowd(0.4, 3); setTimeout(sfx.organ, 900);
+        sfx.crack(1.4); sfx.crowd(0.4, 3); later(sfx.organ, 900);
         launch(rand(42, 48), rand(26, 34), (late ? 1 : -1) * rand(2, 22));
         const n = 1 + G.bases.reduce((a, b) => a + b, 0);
         G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
@@ -363,7 +406,7 @@
     if (k) sfx.groan();
     say(k ? "삼진 아웃!" : "아웃!");
     banner(label, `${G.outs} 아웃`, "#ff6b5e", 1500);
-    if (G.outs >= 3) { queuedAt = 0; setTimeout(gameOver, 1700); P.done = true; return; }
+    if (G.outs >= 3) { queuedAt = 0; later(gameOver, 1700); P.done = true; return; }
     endPA();
   }
   function endPA() { G.balls = 0; G.strikes = 0; G.batters++; nextPitch(2200); }
@@ -373,7 +416,7 @@
     for (let i = 2; i >= 0; i--) if (b[i]) { b[i] = 0; if (i + n >= 3) runs++; else b[i + n] = 1; }
     b[n - 1] = 1;
     G.runs += runs;
-    if (runs) setTimeout(() => banner(`${runs}점 득점!`, "", "#7ee08a", 1200), 900);
+    if (runs) later(() => banner(`${runs}점 득점!`, "", "#7ee08a", 1200), 900);
   }
   function advanceWalk() {
     const b = G.bases;
@@ -389,6 +432,7 @@
 
   function gameOver() {
     state = "over";
+    timeBtn.classList.add("hidden");
     sfx.over();
     const nb = G.runs > best;
     if (nb) { best = G.runs; store.set("homerun.best", String(best)); }
@@ -407,12 +451,13 @@
   // ================= 갱신 =================
   function update() {
     if (state !== "play") return;
+    if (timers.length) { const due = timers.filter(t => now >= t.at); timers = timers.filter(t => now < t.at); due.forEach(t => t.fn()); }
     if (queuedAt && now >= queuedAt) { queuedAt = 0; makePitch(); }
     if (!P) return;
     // 레벨: 공 12개마다
     if (!P.counted && now >= P.tRel) {
       P.counted = true; G.pitches++; sfx.pitch();
-      if (G.pitches % PITCHES_PER_LEVEL === 0 && G.level < 30) setTimeout(levelUp, 1200);
+      if (G.pitches % PITCHES_PER_LEVEL === 0 && G.level < 30) later(levelUp, 1200);
     }
     if (P.pending && !P.result && now >= P.resolveAt) resolve(P.pending);
     // 안 휘두르고 지나간 공
@@ -500,93 +545,213 @@
     c.fillStyle = "#f6f3ea"; c.beginPath(); c.moveTo(hp[0].x, hp[0].y); for (const p of hp) c.lineTo(p.x, p.y); c.closePath(); c.fill();
   }
 
-  // 투수: 단계별 자세를 사람 모양으로
-  function drawPitcher(c) {
-    const m = proj(0, 0, MOUND_D), k = m.k * 1.25;           // 조금 크게
-    const side = P && P.motion === "side";
-    let phase = "set", u = 0;
-    if (P) {
-      if (now < P.tLift) phase = "set";
-      else if (now < P.tHold) { phase = "lift"; u = (now - P.tLift) / (P.tHold - P.tLift); }
-      else if (now < P.tStride) { phase = "lift"; u = 1; }
-      else if (now < P.tRel) { phase = "stride"; u = (now - P.tStride) / (P.tRel - P.tStride); }
-      else if (now < P.tRel + 380) { phase = "follow"; u = (now - P.tRel) / 380; }
+  // ================= 사람 골격 =================
+  // 관절을 실제 3차원(미터) 공간에 두고, 동작마다 자세(키프레임)를 정해 그 사이를 부드럽게 잇는다.
+  // 그릴 때는 경기장과 같은 원근(proj)으로 투영하고, 먼 부위부터 칠한다.
+  const V = (x, y, z) => ({ x, y, z });
+  const add = (a, b) => V(a.x + b.x, a.y + b.y, a.z + b.z);
+  const mul = (a, s) => V(a.x * s, a.y * s, a.z * s);
+  const norm = a => { const l = Math.hypot(a.x, a.y, a.z) || 1; return V(a.x / l, a.y / l, a.z / l); };
+  const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+  function mix(a, b, t) {      // 숫자·벡터가 섞인 자세 두 개를 보간
+    const o = {};
+    for (const k in a) o[k] = typeof a[k] === "number" ? a[k] + (b[k] - a[k]) * t : V(a[k].x + (b[k].x - a[k].x) * t, a[k].y + (b[k].y - a[k].y) * t, a[k].z + (b[k].z - a[k].z) * t);
+    return o;
+  }
+  // keys: [[시각, 자세], ...] 시각 순. 구간마다 가속·감속을 넣는다.
+  function poseAt(keys, t, curve = ease) {
+    if (t <= keys[0][0]) return keys[0][1];
+    for (let i = 1; i < keys.length; i++) if (t <= keys[i][0]) {
+      const [t0, a] = keys[i - 1], [t1, b] = keys[i];
+      return mix(a, b, curve((t - t0) / (t1 - t0)));
     }
-    const fx0 = m.x, fy = m.y;
-    const S2 = k / 60;          // 사람 크기 배율
-    c.save(); c.translate(fx0, fy); c.scale(S2, S2);
-    const skin = "#e8b98f", uni = "#f2f2f2", trim = "#1d3a8a", cap = "#1d3a8a";
-    let hipX = 0, hipY = -52, lean = 0, legL = [[-8, 0]], legR = [[8, 0]], armAng = 0.3, gloveY = -78, kneeUp = 0;
-    if (phase === "lift") { kneeUp = u; lean = -0.1 * u; }
-    if (phase === "stride") { hipX = -6 * u; lean = 0.25 * u; armAng = 0.3 + 2.4 * u; }
-    if (phase === "follow") { hipX = -8; lean = 0.45 * (1 - u * 0.4); armAng = 2.7 + 1.5 * u; }
-    const torsoTop = { x: hipX + Math.sin(lean) * 34, y: hipY - Math.cos(lean) * 34 };
-    // 다리
-    c.strokeStyle = uni; c.lineCap = "round"; c.lineWidth = 9;
-    c.beginPath(); c.moveTo(hipX + 4, hipY); c.lineTo(phase === "stride" || phase === "follow" ? 14 : 8, 0); c.stroke();
-    c.beginPath(); c.moveTo(hipX - 4, hipY);
-    if (kneeUp > 0 && phase === "lift") { c.lineTo(hipX - 14, hipY - 10 * kneeUp); c.lineTo(hipX - 10, hipY + 8 - 18 * kneeUp); }
-    else if (phase === "stride") c.lineTo(-10 - 18 * u, -2);
-    else if (phase === "follow") c.lineTo(-28, -2);
-    else c.lineTo(-8, 0);
-    c.stroke();
-    c.strokeStyle = trim; c.lineWidth = 2; c.beginPath(); c.moveTo(hipX - 6, hipY); c.lineTo(hipX + 6, hipY); c.stroke();
-    // 몸통
-    c.strokeStyle = uni; c.lineWidth = 15;
-    c.beginPath(); c.moveTo(hipX, hipY); c.lineTo(torsoTop.x, torsoTop.y); c.stroke();
-    c.fillStyle = trim; c.font = "bold 9px sans-serif"; c.textAlign = "center"; c.fillText("1", (hipX + torsoTop.x) / 2, (hipY + torsoTop.y) / 2 + 3);
-    // 팔: 던지는 팔은 회전, 글러브 팔은 앞으로
-    const sh = torsoTop, armLen = 26;
-    const throwA = side ? armAng * 0.6 - 0.2 : armAng;
-    const handX = sh.x - Math.cos(throwA) * armLen * (side ? 1.2 : 0.6) + (phase === "set" ? 8 : 0);
-    const handY = sh.y + Math.sin(throwA - 1.2) * armLen + (phase === "set" ? 18 : 0);
-    c.strokeStyle = uni; c.lineWidth = 7;
-    c.beginPath(); c.moveTo(sh.x, sh.y + 3); c.lineTo(handX, handY); c.stroke();
-    c.fillStyle = skin; c.beginPath(); c.arc(handX, handY, 3.5, 0, 7); c.fill();
-    const gx = phase === "set" || phase === "lift" ? sh.x + 6 : sh.x + 18, gy = phase === "set" || phase === "lift" ? sh.y + 16 : sh.y + 4;
-    c.beginPath(); c.moveTo(sh.x, sh.y + 3); c.lineTo(gx, gy); c.stroke();
-    c.fillStyle = "#6b3b1c"; c.beginPath(); c.arc(gx, gy, 5, 0, 7); c.fill();
-    // 머리·모자
-    c.fillStyle = skin; c.beginPath(); c.arc(sh.x, sh.y - 9, 7, 0, 7); c.fill();
-    c.fillStyle = cap; c.beginPath(); c.arc(sh.x, sh.y - 11, 7.3, Math.PI, 0); c.fill(); c.fillRect(sh.x - 9, sh.y - 12, 10, 2.5);
-    c.restore();
-    return { hand: { x: fx0 + handX * S2, y: fy + handY * S2 } };
+    return keys[keys.length - 1][1];
+  }
+  // 팔꿈치·무릎: 두 끝점 사이를 bend 방향으로 꺾는다
+  function joint(a, b, len, bend) {
+    const mid = mul(add(a, b), 0.5);
+    const d = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    const h = Math.sqrt(Math.max(0, len * len - (d / 2) * (d / 2)));
+    return add(mid, mul(norm(bend), h));
   }
 
-  // 타자: 오른손 타자를 뒤에서. 스윙하면 배트가 돈다.
-  function drawBatter(c) {
-    const swingU = P && P.swung ? clamp((now - P.swingT + 40) / 170, 0, 1) : 0;
-    const x = 118, y = 700;
-    c.save(); c.translate(x, y);
+  // 원근 투영 + 크기 배율(투수는 멀어서 조금 키운다)
+  function makeProjector(ox, od, scale = 1) {
+    const base = proj(ox, 0, od);
+    return p => {
+      const q = proj(ox + p.x, p.y, od + p.z);
+      return { x: base.x + (q.x - base.x) * scale, y: base.y + (q.y - base.y) * scale, k: q.k * scale, d: od + p.z };
+    };
+  }
+  function limb(c, pr, a, b, w, col) {
+    const A = pr(a), B = pr(b);
+    c.strokeStyle = col; c.lineWidth = Math.max(1.2, w * (A.k + B.k) / 2); c.lineCap = "round";
+    c.beginPath(); c.moveTo(A.x, A.y); c.lineTo(B.x, B.y); c.stroke();
+  }
+  // 그릴 것들을 깊이 순(먼 것 먼저)으로
+  function paint(c, items) { items.sort((p, q) => q.d - p.d); for (const it of items) it.f(); }
+
+  // ---------- 투수 (오른손, 포수를 마주 봄) ----------
+  // th: 몸 돌림(90 = 옆으로 서서 왼어깨가 홈 쪽, 0 = 정면). lean: 홈 쪽으로 숙임.
+  // rh: 던지는 손, gh: 글러브 손, lf/rf: 왼발·오른발, lk/rk: 무릎 굽히는 방향
+  const PK = {
+    set:     { th: 90, lean: 0.02, hip: V(0, 0.95, 0),     rh: V(-0.26, 1.28, 0.02),  gh: V(-0.26, 1.3, -0.04),  lf: V(0.02, 0, -0.24), rf: V(0, 0, 0.16) },
+    lift:    { th: 98, lean: -0.08, hip: V(0, 0.99, 0.04), rh: V(-0.22, 1.36, 0.06),  gh: V(-0.22, 1.38, 0.0),   lf: V(-0.12, 0.62, -0.12), rf: V(0, 0, 0.14) },
+    lowlift: { th: 92, lean: 0, hip: V(0, 0.96, 0.02),     rh: V(-0.24, 1.3, 0.04),   gh: V(-0.24, 1.32, -0.02),  lf: V(-0.02, 0.22, -0.2), rf: V(0, 0, 0.15) },
+    stride:  { th: 78, lean: 0.18, hip: V(0.04, 0.78, -0.42), rh: V(0.3, 1.5, 0.6),   gh: V(-0.22, 1.34, -0.7),   lf: V(0.3, 0, -0.98), rf: V(-0.06, 0, 0.14) },
+    release: { th: 8, lean: 0.5, hip: V(0.06, 0.8, -0.72),  rh: V(-0.34, 1.72, -0.98), gh: V(0.3, 1.08, -0.52),    lf: V(0.3, 0, -1.02), rf: V(-0.1, 0.06, -0.12) },
+    follow:  { th: -22, lean: 1.0, hip: V(0.08, 0.76, -0.86), rh: V(0.38, 0.62, -1.06), gh: V(0.34, 0.96, -0.58),  lf: V(0.3, 0, -1.02), rf: V(-0.16, 0.48, 0.12) },
+  };
+  // 사이드암: 팔이 옆으로 낮게
+  const PK_SIDE = {
+    stride:  { ...PK.stride, rh: V(0.24, 1.28, 0.58) },
+    release: { ...PK.release, lean: 0.32, rh: V(-0.82, 1.34, -0.82) },
+    follow:  { ...PK.follow, lean: 0.7, rh: V(0.42, 0.82, -1.0) },
+  };
+  function pitcherPose() {
+    if (!P) return PK.set;
+    const side = P.motion === "side", K = side ? { ...PK, ...PK_SIDE } : PK;
+    const lift = P.motion === "quick" ? PK.lowlift : PK.lift;
+    const bob = { ...lift, hip: add(lift.hip, V(0, Math.sin(now / 90) * 0.006, 0)) };   // 멈칫할 때 미세하게 흔들림
+    return poseAt([
+      [P.tLift, K.set], [P.tHold, lift], [P.tStride, bob],
+      [P.tStride + (P.tRel - P.tStride) * 0.62, K.stride], [P.tRel, K.release],
+      [P.tRel + 380, K.follow], [P.tRel + 900, K.follow], [P.tRel + 1600, K.set],
+    ], now);
+  }
+  function pitcherJoints(p) {
+    const th = p.th * Math.PI / 180;
+    const axis = V(-Math.cos(th), 0, Math.sin(th));            // 왼어깨 → 오른어깨
+    const fwd = V(-Math.sin(th), 0, -Math.cos(th));            // 가슴이 향한 쪽
+    const sc = add(p.hip, V(0, 0.52 * Math.cos(p.lean), -0.52 * Math.sin(p.lean)));   // 어깨 중심
+    const ls = add(sc, mul(axis, -0.19)), rs = add(sc, mul(axis, 0.19));
+    const hipAxis = V(-Math.cos(th * 0.75), 0, Math.sin(th * 0.75));
+    const lh = add(p.hip, mul(hipAxis, -0.11)), rhp = add(p.hip, mul(hipAxis, 0.11));
+    return {
+      sc, ls, rs, lh, rhp, fwd,
+      head: add(sc, V(0, 0.24 * Math.cos(p.lean * 0.8), -0.24 * Math.sin(p.lean * 0.8))),
+      le: joint(ls, p.gh, 0.3, add(V(0, -1, 0), mul(fwd, -0.4))), re: joint(rs, p.rh, 0.3, add(V(0, -0.6, 0), mul(axis, 0.7))),
+      lk: joint(lh, p.lf, 0.47, add(fwd, V(0, 0.3, -0.6))), rk: joint(rhp, p.rf, 0.47, add(fwd, V(0, 0, -0.4))),
+    };
+  }
+  let lastHand = null;
+  function drawPitcher(c) {
+    const p = pitcherPose(), J = pitcherJoints(p);
+    const pr = makeProjector(0, MOUND_D, 1.4);
+    const UNI = "#f2f2f2", NAVY = "#1d3a8a", SKIN = "#e8b98f", SHOE = "#151515";
+    // 그림자
+    const g0 = pr(V(0, 0, -0.3));
+    c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.ellipse(g0.x, g0.y + 1, 16, 3, 0, 0, 7); c.fill();
+    const it = [];
+    const seg = (a, b, w, col) => it.push({ d: MOUND_D + (a.z + b.z) / 2, f: () => limb(c, pr, a, b, w, col) });
     // 다리
-    c.strokeStyle = "#e9e9ee"; c.lineCap = "round"; c.lineWidth = 26;
-    c.beginPath(); c.moveTo(-18, -150); c.lineTo(-40, 0); c.stroke();
-    c.beginPath(); c.moveTo(18, -150); c.lineTo(36 + swingU * 10, 0); c.stroke();
-    // 몸통 (등 번호)
-    const rot = swingU * 0.5;
-    c.save(); c.translate(0, -170); c.rotate(rot * 0.3);
-    c.fillStyle = "#e9e9ee"; c.beginPath(); c.roundRect ? c.roundRect(-40, -90, 80, 105, 22) : c.rect(-40, -90, 80, 105); c.fill();
-    c.fillStyle = "#c62f2f"; c.font = "bold 46px 'Black Han Sans', sans-serif"; c.textAlign = "center"; c.fillText("10", 0, -20);
-    c.fillStyle = "#1f2a5c"; c.fillRect(-40, 2, 80, 10);
-    // 헬멧
-    c.fillStyle = "#1f2a5c"; c.beginPath(); c.arc(4, -108, 26, 0, Math.PI * 2); c.fill();
-    c.fillStyle = "#33437f"; c.beginPath(); c.arc(-4, -114, 9, 0, Math.PI * 2); c.fill();
-    c.restore();
-    // 배트: 어깨 위에서 앞으로 휘둘러진다
-    const pivot = { x: 32, y: -250 };
-    const a0 = -2.2, a1 = 0.55;           // 라디안
-    const a = a0 + (a1 - a0) * (swingU < 1 ? 1 - Math.pow(1 - swingU, 3) : 1);
-    const len = 190 * (0.75 + 0.25 * Math.sin(Math.min(1, swingU) * Math.PI));
-    const tip = { x: pivot.x + Math.cos(a) * len, y: pivot.y + Math.sin(a) * len * 0.55 };
-    c.strokeStyle = "#c58a4b"; c.lineWidth = 12; c.beginPath(); c.moveTo(pivot.x, pivot.y); c.lineTo(tip.x, tip.y); c.stroke();
-    c.strokeStyle = "#7a5028"; c.lineWidth = 6; c.beginPath(); c.moveTo(pivot.x, pivot.y); c.lineTo(pivot.x + Math.cos(a) * 34, pivot.y + Math.sin(a) * 34 * 0.55); c.stroke();
-    // 손
-    c.fillStyle = "#e8b98f"; c.beginPath(); c.arc(pivot.x, pivot.y, 10, 0, 7); c.fill();
-    if (swingU > 0 && swingU < 1) {   // 휘두른 자국
-      c.strokeStyle = "rgba(255,255,255,.25)"; c.lineWidth = 18; c.beginPath();
-      c.ellipse(pivot.x, pivot.y, len, len * 0.55, 0, a0 + 0.5, a, false); c.stroke();
+    seg(J.lh, J.lk, 0.17, UNI); seg(J.lk, p.lf, 0.14, UNI); seg(p.lf, add(p.lf, mul(J.fwd, 0.12)), 0.1, SHOE);
+    seg(J.rhp, J.rk, 0.17, UNI); seg(J.rk, p.rf, 0.14, UNI); seg(p.rf, add(p.rf, mul(J.fwd, 0.12)), 0.1, SHOE);
+    // 몸통
+    it.push({ d: MOUND_D + p.hip.z + 0.01, f: () => {
+      limb(c, pr, p.hip, J.sc, 0.34, UNI);
+      const a = pr(J.lh), b = pr(J.rhp); c.strokeStyle = NAVY; c.lineWidth = 2; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+    } });
+    // 팔
+    seg(J.ls, J.le, 0.1, UNI); seg(J.le, p.gh, 0.09, UNI);
+    it.push({ d: MOUND_D + p.gh.z, f: () => { const q = pr(p.gh); c.fillStyle = "#6b3b1c"; c.beginPath(); c.arc(q.x, q.y, Math.max(2.5, 0.08 * q.k), 0, 7); c.fill(); } });
+    seg(J.rs, J.re, 0.1, UNI); seg(J.re, p.rh, 0.09, UNI);
+    it.push({ d: MOUND_D + p.rh.z - 0.01, f: () => { const q = pr(p.rh); c.fillStyle = SKIN; c.beginPath(); c.arc(q.x, q.y, Math.max(1.8, 0.05 * q.k), 0, 7); c.fill(); } });
+    // 머리·모자
+    it.push({ d: MOUND_D + J.head.z, f: () => {
+      const q = pr(J.head), r = Math.max(3, 0.11 * q.k);
+      c.fillStyle = SKIN; c.beginPath(); c.arc(q.x, q.y, r, 0, 7); c.fill();
+      c.fillStyle = NAVY; c.beginPath(); c.arc(q.x, q.y - r * 0.25, r * 1.02, Math.PI, 0); c.fill();
+      const v = pr(add(J.head, add(mul(J.fwd, 0.13), V(0, 0.04, 0)))); c.strokeStyle = NAVY; c.lineWidth = r * 0.5; c.beginPath(); c.moveTo(q.x, q.y - r * 0.2); c.lineTo(v.x, v.y - r * 0.2); c.stroke();
+    } });
+    paint(c, it);
+    lastHand = pr(p.rh);
+    return { hand: lastHand };
+  }
+  // 공이 나가는 지점: 던지는 손의 '놓는 순간' 자세
+  function releasePoint(side) {
+    const r = (side ? PK_SIDE.release : PK.release).rh;
+    return { x: r.x, y: r.y, d: MOUND_D + r.z };
+  }
+
+  // ---------- 타자 (오른손, 포수 쪽에서 본 모습) ----------
+  // 홈플레이트 왼쪽에 서서 홈 쪽(+x)을 본다. th: 몸통 돌림(0 = 옆으로, 90 = 투수를 정면으로)
+  const BX = -0.7, BD = 3.0;
+  const BK_ = {
+    stance:  { th: 0, hip: V(0, 0.9, 0),       hands: V(-0.05, 1.46, -0.16), bat: V(-0.28, 0.82, -0.5),  ff: V(0.02, 0, 0.36), bf: V(0, 0, -0.34) },
+    load:    { th: -14, hip: V(-0.02, 0.88, -0.05), hands: V(-0.12, 1.44, -0.24), bat: V(-0.45, 0.72, -0.52), ff: V(0.02, 0.07, 0.3), bf: V(0, 0, -0.34) },
+    launch:  { th: 22, hip: V(0.02, 0.86, 0.04), hands: V(0.04, 1.18, -0.12), bat: V(-0.55, 0.12, -0.82),  ff: V(0.04, 0, 0.42), bf: V(0, 0.03, -0.34) },
+    contact: { th: 58, hip: V(0.04, 0.86, 0.08), hands: V(0.26, 1.02, 0.12),  bat: V(0.96, -0.08, 0.28),  ff: V(0.04, 0, 0.42), bf: V(0.06, 0.06, -0.3) },
+    extend:  { th: 88, hip: V(0.04, 0.87, 0.1),  hands: V(0.22, 1.12, 0.42),  bat: V(0.28, 0.12, 0.96),   ff: V(0.04, 0, 0.42), bf: V(0.1, 0.1, -0.26) },
+    finish:  { th: 112, hip: V(0.03, 0.9, 0.1),  hands: V(-0.12, 1.46, 0.3),  bat: V(-0.82, 0.42, -0.24), ff: V(0.04, 0, 0.42), bf: V(0.12, 0.12, -0.22) },
+  };
+  function batterPose() {
+    const t = now;
+    const idle = { ...BK_.stance, bat: add(BK_.stance.bat, V(0, 0, Math.sin(t / 260) * 0.12)) };   // 배트를 까딱이며 기다림
+    if (!P) return idle;
+    if (P.swung) {
+      const s = P.swingT;
+      return poseAt([[s, BK_.load], [s + 40, BK_.launch], [s + 75, BK_.contact], [s + 125, BK_.extend], [s + 300, BK_.finish]], t, x => 1 - Math.pow(1 - x, 2));
     }
-    c.restore();
+    // 투수가 공을 놓을 때 배트를 당겨 준비하고, 안 치면 천천히 돌아온다
+    return poseAt([[P.tRel - 200, idle], [P.tRel + 60, BK_.load], [P.tArr + 160, BK_.load], [P.tArr + 700, idle]], t);
+  }
+  function drawBatter(c) {
+    const p = batterPose(), th = p.th * Math.PI / 180;
+    const chest = V(Math.cos(th), 0, Math.sin(th)), axis = V(-Math.sin(th), 0, Math.cos(th));   // axis: 뒤어깨 → 앞어깨
+    const sc = add(p.hip, V(0.04, 0.52, 0));
+    const fs = add(sc, mul(axis, 0.2)), bs = add(sc, mul(axis, -0.2));
+    const hipAxis = V(-Math.sin(th * 0.6), 0, Math.cos(th * 0.6));
+    const fh = add(p.hip, mul(hipAxis, 0.12)), bh = add(p.hip, mul(hipAxis, -0.12));
+    const head = add(sc, add(V(0, 0.25, 0), mul(chest, 0.03)));
+    const bat = norm(p.bat), grip = p.hands, tip = add(grip, mul(bat, 0.86)), knob = add(grip, mul(bat, -0.05));
+    const fe = joint(fs, grip, 0.31, add(V(0, -1, 0), mul(chest, -0.3)));
+    const be = joint(bs, grip, 0.31, add(V(0, -0.8, 0), mul(axis, -0.8)));
+    const fk = joint(fh, p.ff, 0.48, add(chest, V(0, 0, 0.3))), bk = joint(bh, p.bf, 0.48, add(chest, V(0, 0, -0.2)));
+    const pr = makeProjector(BX, BD, 0.88);
+    const UNI = "#ececf1", NAVY = "#1f2a5c", RED = "#c62f2f", SKIN = "#e8b98f";
+    const it = [];
+    const seg = (a, b, w, col) => it.push({ d: BD + (a.z + b.z) / 2, f: () => limb(c, pr, a, b, w, col) });
+    // 다리
+    seg(fh, fk, 0.2, UNI); seg(fk, p.ff, 0.16, UNI); seg(add(p.ff, V(0, 0.1, 0)), p.ff, 0.13, NAVY); seg(p.ff, add(p.ff, V(0.16, 0, 0.02)), 0.1, "#111");
+    seg(bh, bk, 0.2, UNI); seg(bk, p.bf, 0.16, UNI); seg(add(p.bf, V(0, 0.1, 0)), p.bf, 0.13, NAVY); seg(p.bf, add(p.bf, V(0.16, 0, 0)), 0.1, "#111");
+    // 몸통: 등번호는 등이 카메라 쪽으로 보일 때만
+    it.push({ d: BD + p.hip.z + 0.02, f: () => {
+      limb(c, pr, p.hip, sc, 0.36, UNI);
+      const a = pr(fh), b = pr(bh); c.strokeStyle = NAVY; c.lineWidth = Math.max(3, 0.05 * a.k); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      const back = -Math.sin(th);    // 등이 카메라를 향한 정도
+      if (back > -0.2 && th < 0.9) {
+        const m = pr(add(mul(add(p.hip, sc), 0.5), V(-0.08, 0.05, -0.12)));
+        c.fillStyle = RED; c.font = `${Math.round(0.2 * m.k)}px 'Black Han Sans', sans-serif`; c.textAlign = "center"; c.fillText("10", m.x, m.y + 0.06 * m.k);
+      }
+    } });
+    // 팔과 배트
+    seg(bs, be, 0.11, UNI); seg(be, grip, 0.1, UNI);
+    seg(fs, fe, 0.11, UNI); seg(fe, grip, 0.1, UNI);
+    it.push({ d: BD + (grip.z + tip.z) / 2 - 0.05, f: () => {
+      limb(c, pr, knob, tip, 0.065, "#c58a4b");
+      limb(c, pr, add(grip, mul(bat, 0.45)), tip, 0.075, "#d39a5a");
+      limb(c, pr, knob, add(grip, mul(bat, 0.12)), 0.05, "#5a3a1e");
+      const q = pr(grip); c.fillStyle = RED; c.beginPath(); c.arc(q.x, q.y, Math.max(4, 0.06 * q.k), 0, 7); c.fill();
+    } });
+    // 휘두른 자국
+    if (P && P.swung && now - P.swingT < 200 && now - P.swingT > 20) {
+      it.push({ d: BD - 1, f: () => {
+        c.save(); c.globalAlpha = 0.18 * (1 - (now - P.swingT) / 200); c.fillStyle = "#fff";
+        const pts = [];
+        for (let k = 0; k <= 8; k++) { const q = poseAt([[0, BK_.launch], [1, BK_.extend]], k / 8, x => x); pts.push(pr(add(q.hands, mul(norm(q.bat), 0.8)))); }
+        c.beginPath(); c.moveTo(pts[0].x, pts[0].y); for (const q of pts) c.lineTo(q.x, q.y); c.lineTo(pr(grip).x, pr(grip).y); c.fill(); c.restore();
+      } });
+    }
+    // 헬멧
+    it.push({ d: BD + head.z, f: () => {
+      const q = pr(head), r = 0.125 * q.k;
+      c.fillStyle = SKIN; c.beginPath(); c.arc(q.x + r * 0.15, q.y + r * 0.1, r * 0.9, 0, 7); c.fill();
+      c.fillStyle = NAVY; c.beginPath(); c.arc(q.x, q.y, r, Math.PI * 0.9, Math.PI * 2.15); c.fill();
+      c.fillStyle = "#33437f"; c.beginPath(); c.ellipse(q.x - r * 0.45, q.y + r * 0.2, r * 0.42, r * 0.5, 0, 0, 7); c.fill();   // 귀 덮개
+      c.fillStyle = "rgba(255,255,255,.25)"; c.beginPath(); c.arc(q.x - r * 0.3, q.y - r * 0.45, r * 0.22, 0, 7); c.fill();
+    } });
+    paint(c, it);
   }
 
   function drawZone(c) {
@@ -612,7 +777,7 @@
     if (z > 1) w.d = PLATE_D - (z - 1) * 6;      // 포수 미트로
     const sc = ballScreen(w);
     const r = Math.max(1.6, 0.06 * sc.k);
-    if (z < 0.04) { sc.sx = hand.x + (sc.sx - hand.x) * (z / 0.04); sc.sy = hand.y + (sc.sy - hand.y) * (z / 0.04); }
+    if (z < 0.18 && hand) { const u = ease(z / 0.18); sc.sx = hand.x + (sc.sx - hand.x) * u; sc.sy = hand.y + (sc.sy - hand.y) * u; }
     drawBallAt(c, sc, r);
   }
 
@@ -707,7 +872,8 @@
   // ================= 루프 =================
   let acc = 0, last = performance.now();
   function frame(t) {
-    now = performance.now();
+    now = gameNow();
+    if (paused) { last = t; draw(); requestAnimationFrame(frame); return; }
     acc += Math.min(0.1, (t - last) / 1000); last = t;
     while (acc >= 1 / 60) { update(); acc -= 1 / 60; }
     draw();
@@ -722,7 +888,7 @@
   requestAnimationFrame(frame);
 
   // 테스트용 읽기 훅
-  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => performance.now() };
+  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; } };
 })();
 </script>
 </body>
