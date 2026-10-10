@@ -344,43 +344,22 @@
     P.result = kind;
     const late = P.delta > 0;
     switch (kind) {
-      case "hr": {
-        sfx.crack(1.4); sfx.crowd(0.4, 3); later(sfx.organ, 900);
-        launch(rand(42, 48), rand(26, 34), (late ? 1 : -1) * rand(2, 22));
-        const n = 1 + G.bases.reduce((a, b) => a + b, 0);
-        G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
-        say("홈런!", 1.0);
-        banner(n === 4 ? "만루 홈런!" : "홈런!", `${n}점`, "#ffcf3a", 2400, true);
-        endPA(); break;
-      }
-      case "double": {
-        sfx.crack(1.1); sfx.crowd(0.25, 1.8);
-        launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34));
-        advance(2); G.hits++;
-        say("2루타!", 0.95); banner("2루타!", "", "#ffffff", 1500);
-        endPA(); break;
-      }
-      case "single": {
-        sfx.crack(0.95); sfx.crowd(0.18, 1.4);
-        launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38));
-        advance(1); G.hits++;
-        say("안타!", 0.95); banner("안타!", "", "#ffffff", 1300);
-        endPA(); break;
-      }
+      // 맞힌 공: 지금은 소리와 함께 날리기만 하고, 판정은 공이 떨어지거나 넘어갈 때 낸다
+      case "hr":     sfx.crack(1.4);  sfx.crowd(0.18, 1.2); launch(rand(42, 48), rand(26, 34), (late ? 1 : -1) * rand(2, 22)); break;
+      case "double": sfx.crack(1.1);  sfx.crowd(0.14, 1.0); launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34)); break;
+      case "single": sfx.crack(0.95); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
       case "out": {
         sfx.dull();
-        const fly = Math.random() < 0.55;
-        launch(fly ? rand(24, 30) : rand(16, 22), fly ? rand(38, 55) : rand(-8, 2), (late ? 1 : -1) * rand(0, 35));
-        out(fly ? "뜬공 아웃" : "땅볼 아웃"); break;
+        P.fly = Math.random() < 0.55;
+        launch(P.fly ? rand(24, 30) : rand(16, 22), P.fly ? rand(38, 55) : rand(-8, 2), (late ? 1 : -1) * rand(0, 35));
+        break;
       }
       case "foul": {
         sfx.dull();
-        const back = Math.random() < 0.4;
-        if (back) launch(rand(18, 26), rand(55, 75), 180 + rand(-25, 25));
+        P.back = Math.random() < 0.4;
+        if (P.back) launch(rand(18, 26), rand(55, 75), 180 + rand(-25, 25));
         else launch(rand(22, 30), rand(10, 30), (late ? 1 : -1) * rand(50, 70));
-        if (G.strikes < 2) G.strikes++;
-        say("파울!"); banner("파울", "", "#d7dbe6", 1000);
-        nextPitch(1500); break;
+        break;
       }
       case "whiff": strike(true); break;
       case "strike": strike(false); break;
@@ -392,6 +371,38 @@
         break;
       }
     }
+  }
+  // 공이 떨어지거나(안타·파울), 펜스를 넘거나(홈런), 잡히거나(뜬공), 처리될 때(땅볼) 판정을 낸다
+  function call(kind) {
+    if (P.called) return;
+    P.called = kind; P.calledAt = now;
+    switch (kind) {
+      case "hr": {
+        sfx.crowd(0.42, 3); later(sfx.organ, 300);
+        const n = 1 + G.bases.reduce((a, b) => a + b, 0);
+        G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
+        say("홈런!", 1.0);
+        banner(n === 4 ? "만루 홈런!" : "홈런!", `${n}점`, "#ffcf3a", 2400, true);
+        endPA(); break;
+      }
+      case "double": sfx.crowd(0.25, 1.6); advance(2); G.hits++; say("2루타!", 0.95); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
+      case "single": sfx.crowd(0.18, 1.3); advance(1); G.hits++; say("안타!", 0.95); banner("안타!", "", "#ffffff", 1300); endPA(); break;
+      case "out": out(P.fly ? "뜬공 아웃" : "땅볼 아웃"); break;
+      case "foul":
+        if (G.strikes < 2) G.strikes++;
+        say("파울!"); banner("파울", "", "#d7dbe6", 1000);
+        nextPitch(1300); break;
+    }
+  }
+  function watchFlight() {
+    const h = P.hit, kind = P.result, age = now - h.t0;
+    if (P.called || !h) return;
+    if (age > 4500) return call(kind);                                          // 안전장치
+    if (kind === "hr" && h.d >= PLATE_D + 108) return call("hr");                // 펜스를 넘음
+    if (kind === "foul" && P.back && age > 550) return call("foul");             // 뒤로 넘어감 (잠깐 뒤 판정)
+    if (kind === "out" && P.fly && h.vy < 0 && h.y < 2.2) return call("out");    // 수비수가 잡음
+    if (kind === "out" && !P.fly && age > 1100) return call("out");             // 땅볼을 처리
+    if (h.landed && (kind === "single" || kind === "double" || kind === "foul")) return call(kind);   // 땅에 떨어짐
   }
   function strike(swinging) {
     sfx.mitt();
@@ -465,16 +476,20 @@
     if (!P.swung && !P.result && now >= P.tArr + WIN.foul + 5) resolve(inZoneFinal() ? "strike" : "ball");
     // 날아가는 공
     if (P.hit) {
-      const h = P.hit, dt = 1 / 60;
+      const h = P.hit, dt = 1.4 / 60;          // 실제보다 1.4배 빠르게 (판정까지 너무 오래 걸리지 않게)
       for (let i = 0; i < 2; i++) {
-        if (h.y <= 0 && h.vy < 0) { h.vy *= -0.35; h.vd *= 0.6; h.vx *= 0.6; h.y = 0; }
+        if (h.y <= 0 && h.vy < 0) {
+          if (!h.landed && P.called == null && P.result !== "out" && P.result !== "hr") { h.landed = true; sfx.dull(); }
+          h.vy *= -0.35; h.vd *= 0.6; h.vx *= 0.6; h.y = 0;
+        }
         h.x += h.vx * dt / 2; h.y += h.vy * dt / 2; h.d += h.vd * dt / 2; h.vy -= 9.8 * dt / 2;
       }
       h.trail.push({ x: h.x, y: h.y, d: h.d }); if (h.trail.length > 14) h.trail.shift();
+      watchFlight();
     }
     for (const f of fx) { f.t += 1 / 60; f.x += f.vx; f.y += f.vy; f.vy += 0.05; }
     fx = fx.filter(f => f.t < f.life);
-    if (P.result === "hr" && Math.random() < 0.25) firework();
+    if (P.called === "hr" && Math.random() < 0.25) firework();
   }
   function firework() {
     const x = rand(60, 420), y = rand(60, 200), col = pick(["#ffcf3a", "#ff4b3e", "#7ee08a", "#5ab8ff", "#ffffff"]);
@@ -949,6 +964,7 @@
       c.beginPath(); c.arc(s.sx, s.sy, Math.max(1, 0.05 * s.k), 0, 7); c.fill();
     }
     if (h.d < 0.6) return;        // 카메라 뒤로 넘어간 파울
+    if (P.called === "out" && P.fly) return;   // 수비수가 잡은 공
     const s = ballScreen(h);
     drawBallAt(c, s, Math.max(1.4, 0.06 * s.k));
   }
@@ -1016,7 +1032,7 @@
     }
     ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bgCache, 0, 0); ctx.restore();
     // 관중석 플래시 (홈런 때)
-    if (P && P.result === "hr") for (let i = 0; i < 18; i++) { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(Math.random() * W, 152 + Math.random() * 90, 2, 2); }
+    if (P && P.called === "hr") for (let i = 0; i < 18; i++) { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(Math.random() * W, 152 + Math.random() * 90, 2, 2); }
     const hand = drawPitcher(ctx).hand;
     drawZone(ctx);
     drawPitchBall(ctx, hand);
