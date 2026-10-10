@@ -161,15 +161,34 @@
     groan() { noise("lowpass", 500, 0.7, 0.9, 0.15, 0, 0, 0.2); },
     organ() { [392, 523, 659, 784, 659, 784].forEach((f, i) => tone(f, i === 5 ? 0.45 : 0.14, "square", 0.06, [0, .15, .3, .45, .7, .85][i])); },
     level() { [523, 784, 1047].forEach((f, i) => tone(f, 0.16, "square", 0.06, i * 0.09)); },
+    pa() { tone(68, 0.22, "sine", 0.22, 0, 50); noise("lowpass", 260, 0.7, 0.35, 0.08, 0.02); },   // 구장 확성기의 낮은 울림
     over() { [392, 330, 262].forEach((f, i) => tone(f, 0.35, "triangle", 0.1, i * 0.18)); },
   };
-  // 심판 목소리: 짧은 낱말만, 낮고 힘차게
-  let voice = null;
-  function pickVoice() { try { const vs = speechSynthesis.getVoices().filter(v => /^ko/i.test(v.lang)); voice = vs.find(v => /male|남|injoon|인준/i.test(v.name)) || vs[0] || null; } catch (e) {} }
+  // 심판 목소리: 짧은 낱말만, 굵은 남자 목소리로
+  // 기기 TTS 중 한국어 남성 음성을 이름으로 골라 쓰고, 없으면 여성 음성을 최대한 낮춰 흉내 낸다
+  const MALE_VOICES = [/injoon|인준/i, /hyunsu|현수/i, /bongjin|봉진/i, /gookmin|국민/i, /minsu|민수/i, /grandpa|할아버지/i, /rocko/i, /reed/i, /eddy/i, /ko-kr-x-ko[cd]/i, /\bmale\b|남성|남자/i];
+  let voice = null, voiceMale = false;
+  function pickVoice() {
+    try {
+      const vs = speechSynthesis.getVoices().filter(v => /^ko/i.test(v.lang));
+      voice = null; voiceMale = false;
+      for (const re of MALE_VOICES) { const v = vs.find(v => re.test(v.name) || re.test(v.voiceURI || "")); if (v) { voice = v; voiceMale = true; break; } }
+      if (!voice) voice = vs.find(v => !/female|여성/i.test(v.name)) || vs[0] || null;
+    } catch (e) {}
+  }
   if ("speechSynthesis" in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-  function say(t, pitch = 0.85) {
+  // lift: 홈런처럼 흥분한 외침은 조금 올린다
+  function say(t, lift = 0) {
     if (mode !== "all" || !("speechSynthesis" in window)) return;
-    try { if (speechSynthesis.pending) speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.lang = "ko-KR"; if (voice) u.voice = voice; u.pitch = pitch; u.rate = 1.05; speechSynthesis.speak(u); } catch (e) {}
+    try {
+      if (!voice) pickVoice();
+      if (speechSynthesis.pending || speechSynthesis.speaking) speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(t); u.lang = "ko-KR"; if (voice) u.voice = voice;
+      u.pitch = clamp((voiceMale ? 0.72 : 0.32) + lift, 0, 2);   // 남성 음성은 살짝만, 여성 음성은 바닥까지 낮춘다
+      u.rate = 0.92 + lift * 0.3; u.volume = 1;
+      speechSynthesis.speak(u);
+      sfx.pa();
+    } catch (e) {}
   }
   const sndBtn = $("#snd");
   const syncSnd = () => { sndBtn.textContent = LABEL[mode]; };
@@ -319,7 +338,7 @@
     timeBtn.classList.remove("hidden");
     audio();
     newGame();
-    say("플레이볼!", 0.9);
+    say("플레이볼!", 0.1);
   }
 
   // ================= 판정 =================
@@ -381,12 +400,12 @@
         sfx.crowd(0.42, 3); later(sfx.organ, 300);
         const n = 1 + G.bases.reduce((a, b) => a + b, 0);
         G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
-        say("홈런!", 1.0);
+        say("홈런!", 0.25);
         banner(n === 4 ? "만루 홈런!" : "홈런!", `${n}점`, "#ffcf3a", 2400, true);
         endPA(); break;
       }
-      case "double": sfx.crowd(0.25, 1.6); advance(2); G.hits++; say("2루타!", 0.95); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
-      case "single": sfx.crowd(0.18, 1.3); advance(1); G.hits++; say("안타!", 0.95); banner("안타!", "", "#ffffff", 1300); endPA(); break;
+      case "double": sfx.crowd(0.25, 1.6); advance(2); G.hits++; say("2루타!", 0.15); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
+      case "single": sfx.crowd(0.18, 1.3); advance(1); G.hits++; say("안타!", 0.15); banner("안타!", "", "#ffffff", 1300); endPA(); break;
       case "out": out(P.fly ? "뜬공 아웃" : "땅볼 아웃"); break;
       case "foul":
         if (G.strikes < 2) G.strikes++;
