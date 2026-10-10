@@ -399,7 +399,7 @@
     const raw = ev && ev.timeStamp && Math.abs(ev.timeStamp - performance.now()) < 1000 ? ev.timeStamp : performance.now();
     const t = raw - pauseAcc;                 // 경기 시계로 바꾼다
     if (t < P.tRel - 120) return;            // 공을 놓기도 전에 누르면 무시
-    P.swung = true; P.swingT = t;
+    P.swung = true; P.swingT = t; feel("batter", "effort", 500);
     sfx.swing();
     judge(t - P.tArr);
   }
@@ -497,8 +497,8 @@
       case "ball": {
         sfx.mitt();
         G.balls++;
-        if (G.balls >= 4) { advanceWalk(); say("볼넷!"); banner("볼넷", "", "#7ee08a", 1300); endPA(); }
-        else { say("볼!"); banner("볼", "", "#7ee08a", 800); nextPitch(); }
+        if (G.balls >= 4) { advanceWalk(); say("볼넷!"); feel("batter", "smirk", 1800); feel("pitcher", "annoyed", 1800); banner("볼넷", "", "#7ee08a", 1300); endPA(); }
+        else { say("볼!"); feel("pitcher", "annoyed", 900); banner("볼", "", "#7ee08a", 800); nextPitch(); }
         break;
       }
     }
@@ -512,16 +512,16 @@
         sfx.crowd(0.42, 3); later(sfx.organ, 300);
         const n = 1 + G.bases.reduce((a, b) => a + b, 0);
         G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
-        say("홈런!", 0.25);
+        say("홈런!", 0.25); feel("batter", "joy", 2800); feel("pitcher", "shock", 2800);
         banner(n === 4 ? "만루 홈런!" : "홈런!", `${n}점`, "#ffcf3a", 2400, true);
         endPA(); break;
       }
-      case "double": sfx.crowd(0.25, 1.6); advance(2); G.hits++; say("2루타!", 0.15); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
-      case "single": sfx.crowd(0.18, 1.3); advance(1); G.hits++; say("안타!", 0.15); banner("안타!", "", "#ffffff", 1300); endPA(); break;
+      case "double": sfx.crowd(0.25, 1.6); feel("batter", "joy", 2000); feel("pitcher", "annoyed", 2000); advance(2); G.hits++; say("2루타!", 0.15); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
+      case "single": sfx.crowd(0.18, 1.3); feel("batter", "happy", 1800); feel("pitcher", "annoyed", 1800); advance(1); G.hits++; say("안타!", 0.15); banner("안타!", "", "#ffffff", 1300); endPA(); break;
       case "out": out(P.fly ? "뜬공 아웃" : "땅볼 아웃"); break;
       case "foul":
         if (G.strikes < 2) G.strikes++;
-        say("파울!"); banner("파울", "", "#d7dbe6", 1000);
+        say("파울!"); banner("파울", "", "#d7dbe6", 1000); feel("batter", "annoyed", 1100);
         nextPitch(1300); break;
     }
   }
@@ -539,14 +539,14 @@
     sfx.mitt();
     G.strikes++;
     if (G.strikes >= 3) { out(swinging ? "헛스윙 삼진" : "루킹 삼진", true); return; }
-    say(swinging ? "헛스윙!" : "스트라이크!");
+    say(swinging ? "헛스윙!" : "스트라이크!"); feel("batter", swinging ? "annoyed" : "shock", 1000); feel("pitcher", "smirk", 1000);
     banner(swinging ? "헛스윙" : "스트라이크", "", "#ffcf3a", 900);
     nextPitch();
   }
   function out(label, k) {
     G.outs++;
     if (k) sfx.groan();
-    say(k ? "삼진 아웃!" : "아웃!");
+    say(k ? "삼진 아웃!" : "아웃!"); feel("batter", "sad", 2000); feel("pitcher", "smirk", 2000);
     banner(label, `${G.outs} 아웃`, "#ff6b5e", 1500);
     if (G.outs >= 3) { queuedAt = 0; later(gameOver, 1700); P.done = true; return; }
     endPA();
@@ -740,6 +740,7 @@
   const mul = (a, s) => V(a.x * s, a.y * s, a.z * s);
   const lerp3 = (a, b, t) => add(a, mul(sub(b, a), t));
   const norm = a => { const l = Math.hypot(a.x, a.y, a.z) || 1; return V(a.x / l, a.y / l, a.z / l); };
+  const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
   const ease = t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
   function mix(a, b, t) {
     const o = {};
@@ -996,9 +997,101 @@
         x.fillStyle = "rgba(0,0,0,.18)"; x.beginPath(); x.ellipse(face.x, face.y - r * 0.15, r * 0.8, r * 0.25, 0, 0, Math.PI); x.fill();   // 챙 그늘
       },
     }));
+    {
+      const C = add(J.head, mul(J.fwd, 0.02)), rS = 0.1 * pr(C).k;
+      if (!faceHidden(pr, C, [J.lw, J.rw], rS))
+        drawFace(c, pr, C, J.fwd, 0.1, moodOf("pitcher"), camFrom(0, MOUND_D, C), { brow: 0.16, eye: 0.02, nose: -0.16, mouth: -0.46, big: 1.5 }, 900);
+    }
     lastHand = pr(J.rw);
     return { hand: lastHand };
   }
+  // ================= 얼굴과 표정 =================
+  // focus 집중 · effort 이 악물기 · joy 활짝 · happy 웃음 · shock 놀람 · annoyed 찡그림 · sad 시무룩 · smirk 씩
+  const MOOD = {
+    focus:   { eye: 0.85, brow: [0, -0.04],    mouth: "line",  curve: 0,     w: 0.24 },
+    effort:  { eye: 0.3,  brow: [-0.04, -0.16], mouth: "teeth", curve: -0.02, w: 0.3, open: 0.1 },
+    joy:     { eye: "arc", brow: [0.07, 0.07],  mouth: "open",  curve: 0.14,  w: 0.34, open: 0.2 },
+    happy:   { eye: 0.6,  brow: [0.03, 0.04],   mouth: "line",  curve: 0.11,  w: 0.3 },
+    shock:   { eye: 1.45, brow: [0.1, 0.1],     mouth: "o",     curve: 0,     w: 0.12, open: 0.2 },
+    annoyed: { eye: 0.55, brow: [-0.03, -0.17], mouth: "line",  curve: -0.06, w: 0.24 },
+    sad:     { eye: 0.5,  brow: [0.02, 0.16],   mouth: "line",  curve: -0.1,  w: 0.26 },
+    smirk:   { eye: 0.55, brow: [0, -0.06],     mouth: "smirk", curve: 0.1,   w: 0.26 },
+  };
+  const face = { batter: { m: "focus", until: 0 }, pitcher: { m: "focus", until: 0 } };
+  function feel(who, m, ms = 1600) { face[who] = { m, until: now + ms }; }
+  function moodOf(who) { const f = face[who]; return now < f.until ? f.m : "focus"; }
+  // 공 모양 머리(중심 C, 반지름 R, 얼굴 방향 f)에 눈썹·눈·코·입을 붙인다. 카메라에서 돌아간 쪽은 흐려지며 사라진다
+  function drawFace(c, pr, C, f, R, mood, cam, o, blinkSeed) {
+    const M = MOOD[mood] || MOOD.focus, u = V(0, 1, 0), sd = norm(V(f.z, 0, -f.x));
+    const dir = (th, ph) => add(add(mul(f, Math.cos(ph) * Math.cos(th)), mul(sd, Math.cos(ph) * Math.sin(th))), mul(u, Math.sin(ph)));
+    const at = (th, ph, rr = 1) => pr(add(C, mul(dir(th, ph), R * rr)));
+    const vis = (th, ph) => clamp((dot(dir(th, ph), cam) - 0.08) * 4, 0, 1);
+    const big = o.big || 1, Rs = R * pr(C).k * big, lw = Math.max(0.7, Rs * 0.085);
+    if (vis(0, 0) <= 0 && vis(0.6, 0) <= 0 && vis(-0.6, 0) <= 0) return;
+    const ink = "#24160f";
+    c.save(); c.lineCap = "round"; c.lineJoin = "round";
+    const blink = (now + blinkSeed) % 3400 < 120;
+    for (const sg of [-1, 1]) {
+      const th = sg * 0.36 * Math.min(big, 1.25), a = vis(th, o.eye); if (a <= 0) continue;
+      c.globalAlpha = a;
+      // 눈썹: [높이, 안쪽 끝 기울기] — 안쪽이 내려가면 화난 얼굴, 올라가면 걱정·놀람
+      const b0 = at(sg * 0.15, o.brow + (M.brow[0] + M.brow[1]) * big), b1 = at(sg * 0.6, o.brow + (M.brow[0] - M.brow[1] * 0.3) * big);
+      c.strokeStyle = ink; c.lineWidth = lw * 1.15; c.beginPath(); c.moveTo(b0.x, b0.y); c.lineTo(b1.x, b1.y); c.stroke();
+      // 눈
+      const e = at(th, o.eye), el = at(th - 0.1 * big, o.eye), er = at(th + 0.1 * big, o.eye), hw = Math.max(0.6, Math.hypot(er.x - el.x, er.y - el.y) / 2);
+      if (M.eye === "arc" || blink) {
+        const up = M.eye === "arc" ? Rs * 0.07 : 0;
+        c.lineWidth = lw; c.beginPath(); c.moveTo(el.x, el.y); c.quadraticCurveTo(e.x, e.y - up * 2, er.x, er.y); c.stroke();
+      } else {
+        const hh = Math.max(0.5, Rs * 0.075 * M.eye);
+        if (M.eye > 1) { c.fillStyle = "#fbfaf6"; c.beginPath(); c.ellipse(e.x, e.y, hw * 1.15, hh * 1.1, 0, 0, 7); c.fill(); }
+        c.fillStyle = ink; c.beginPath(); c.ellipse(e.x, e.y, M.eye > 1 ? hw * 0.55 : hw * 0.8, M.eye > 1 ? hh * 0.6 : hh, 0, 0, 7); c.fill();
+      }
+    }
+    // 코: 얼굴 면에서 튀어나온 작은 삼각 — 옆모습에서도 윤곽으로 읽힌다
+    const na = clamp((dot(dir(0, o.nose), cam) + 0.45) * 2.5, 0, 1);
+    if (na > 0) {
+      c.globalAlpha = na;
+      const n0 = at(0, o.eye - 0.06), n1 = at(0, o.nose, 1.17), n2 = at(0, o.nose - 0.08, 1.0);
+      c.fillStyle = tone3("#dfa97f", -0.06); c.strokeStyle = "rgba(90,45,25,.75)"; c.lineWidth = lw * 0.7;
+      c.beginPath(); c.moveTo(n0.x, n0.y); c.lineTo(n1.x, n1.y); c.lineTo(n2.x, n2.y); c.closePath(); c.fill(); c.stroke();
+    }
+    // 입
+    const ma = vis(0, o.mouth); if (ma > 0 || vis(M.w, o.mouth) > 0 || vis(-M.w, o.mouth) > 0) {
+      const top = [], bot = [];
+      for (let i = 0; i <= 6; i++) {
+        const t = i / 3 - 1, th = t * M.w * Math.min(big, 1.3);
+        if (vis(th, o.mouth) <= 0) continue;
+        const bend = (M.mouth === "smirk" ? (t > 0 ? M.curve * t * t : -0.015 * t * t) : M.curve * t * t) * big;
+        const open = (M.open || 0) * (1 - t * t) * (M.mouth === "o" ? 1.2 : 1) * big;
+        top.push(at(th, o.mouth + bend + (M.mouth === "o" ? open * 0.45 : 0)));
+        bot.push(at(th, o.mouth + bend - open * (M.mouth === "o" ? 0.55 : 1)));
+      }
+      if (top.length >= 2) {
+        c.globalAlpha = Math.max(ma, 0.6);
+        const path = pts => { c.moveTo(pts[0].x, pts[0].y); for (const q of pts.slice(1)) c.lineTo(q.x, q.y); };
+        if (M.mouth === "open" || M.mouth === "teeth" || M.mouth === "o") {
+          c.beginPath(); path(top); for (const q of bot.slice().reverse()) c.lineTo(q.x, q.y); c.closePath();
+          c.fillStyle = M.mouth === "teeth" ? "#f4f1e8" : "#5a1c1c"; c.fill();
+          if (M.mouth === "open") {      // 윗니
+            c.save(); c.clip(); c.fillStyle = "#f4f1e8"; c.beginPath(); path(top); for (const q of top.slice().reverse()) c.lineTo(q.x, q.y + Rs * 0.06); c.closePath(); c.fill(); c.restore();
+          }
+          if (M.mouth === "teeth") { c.strokeStyle = "rgba(60,30,20,.6)"; c.lineWidth = lw * 0.5; c.beginPath(); for (let i = 0; i < top.length; i++) { const m = { x: (top[i].x + bot[i].x) / 2, y: (top[i].y + bot[i].y) / 2 }; i ? c.lineTo(m.x, m.y) : c.moveTo(m.x, m.y); } c.stroke(); }
+          c.strokeStyle = "#3a1a12"; c.lineWidth = lw * 0.8; c.beginPath(); path(top); for (const q of bot.slice().reverse()) c.lineTo(q.x, q.y); c.closePath(); c.stroke();
+        } else {
+          c.strokeStyle = "#5a2a1e"; c.lineWidth = lw; c.beginPath(); path(top); c.stroke();
+        }
+      }
+    }
+    c.restore();
+  }
+  // 손이나 글러브가 얼굴 앞을 가리면 얼굴을 그리지 않는다
+  function faceHidden(pr, C, hands, rS) {
+    const q = pr(C);
+    return hands.some(h => { const a = pr(h); return h.z < C.z && Math.hypot(a.x - q.x, a.y - q.y) < rS * 1.25; });
+  }
+  const camFrom = (ox, od, C) => norm(V(-(ox + C.x), CAMH - C.y, -(od + C.z)));
+
   function releasePoint(side) {
     const r = (side ? PK_SIDE.release : PK.release).rh;
     return { x: r.x, y: r.y, d: MOUND_D + r.z };
@@ -1014,6 +1107,8 @@
     contact: { th: 58, hth: 82, hip: V(0.04, 0.81, 0.09), hands: V(0.26, 1.0, 0.12),   bat: V(0.96, -0.08, 0.28),  ff: V(0.04, 0, 0.46), bf: V(0.07, 0.07, -0.3) },
     extend:  { th: 90, hth: 95, hip: V(0.04, 0.83, 0.1),  hands: V(0.22, 1.1, 0.42),   bat: V(0.28, 0.12, 0.96),   ff: V(0.04, 0, 0.46), bf: V(0.12, 0.12, -0.24) },
     finish:  { th: 116, hth: 100, hip: V(0.03, 0.86, 0.1), hands: V(-0.12, 1.44, 0.3), bat: V(-0.82, 0.42, -0.24), ff: V(0.04, 0, 0.46), bf: V(0.14, 0.14, -0.2) },
+    // 판정이 난 뒤 배트를 내리고 카메라 쪽으로 몸을 돌려 표정을 보인다
+    react:   { th: -38, hth: -12, hip: V(0, 0.85, 0),     hands: V(0.06, 1.02, -0.2), bat: V(0.18, -0.95, -0.08), ff: V(0.02, 0, 0.38), bf: V(0, 0, -0.36) },
   };
   function batterPose() {
     const t = now;
@@ -1021,14 +1116,22 @@
     if (!P) return idle;
     if (P.swung) {
       const s = P.swingT;
-      return poseAt([[s, BK_.load], [s + 40, BK_.launch], [s + 75, BK_.contact], [s + 125, BK_.extend], [s + 300, BK_.finish]], t, x => 1 - Math.pow(1 - x, 2));
+      const keys = [[s, BK_.load], [s + 40, BK_.launch], [s + 75, BK_.contact], [s + 125, BK_.extend], [s + 300, BK_.finish]];
+      const reactAt = P.calledAt != null ? Math.max(s + 600, P.calledAt + 120) : P.result === "whiff" ? s + 650 : Infinity;
+      if (isFinite(reactAt)) keys.push([reactAt, BK_.finish], [reactAt + 450, BK_.react]);
+      return poseAt(keys, t, x => 1 - Math.pow(1 - x, 2));
     }
     return poseAt([[P.tRel - 200, idle], [P.tRel + 60, BK_.load], [P.tArr + 160, BK_.load], [P.tArr + 700, idle]], t);
   }
   const BATTER_KIT = { jersey: "#eeeef3", pants: "#e3e3ea", under: "#1f2a5c", sock: "#1f2a5c", shoe: "#141414", belt: "#1f2a5c", trim: "#1f2a5c", skin: "#dfa97f" };
+  let batYaw = 0;
   function drawBatter(c) {
     const p = batterPose(), th = p.th * Math.PI / 180, hth = p.hth * Math.PI / 180;
     const chest = V(Math.cos(th), 0, Math.sin(th)), axis = V(-Math.sin(th), 0, Math.cos(th));   // axis: 뒤어깨 → 앞어깨
+    // 고개: 표정이 있을 때(그리고 휘두르는 중이 아닐 때) 카메라 쪽으로 살짝 돌린다
+    const swinging = P && P.swung && now - P.swingT < 600;
+    batYaw += ((moodOf("batter") !== "focus" && !swinging ? 0.5 : 0) - batYaw) * 0.12;
+    const hf = V(chest.x * Math.cos(batYaw) + chest.z * Math.sin(batYaw), 0, -chest.x * Math.sin(batYaw) + chest.z * Math.cos(batYaw));
     const hChest = V(Math.cos(hth), 0, Math.sin(hth)), hAxis = V(-Math.sin(hth), 0, Math.cos(hth));
     const sc = add(p.hip, V(0.06, 0.52, 0));
     const fsh = add(sc, mul(axis, 0.2)), bsh = add(sc, mul(axis, -0.2));
@@ -1067,17 +1170,19 @@
       head: () => {
         const q = pr(head), r = 0.12 * q.k;
         // 얼굴 옆선(턱)과 귀
-        const jaw = pr(add(head, add(mul(chest, 0.08), V(0, -0.06, 0))));
-        ball3(x, pr, add(head, add(mul(chest, 0.03), V(0, -0.02, 0))), 0.1, BATTER_KIT.skin, 1.15);
+        const jaw = pr(add(head, add(mul(hf, 0.08), V(0, -0.06, 0))));
+        ball3(x, pr, add(head, add(mul(hf, 0.03), V(0, -0.02, 0))), 0.1, BATTER_KIT.skin, 1.15);
         x.fillStyle = BATTER_KIT.skin; x.beginPath(); x.ellipse(jaw.x, jaw.y, r * 0.42, r * 0.32, 0, 0, 7); x.fill();
         // 헬멧: 광택 그러데이션 + 귀 덮개 + 챙
         const g = x.createRadialGradient(q.x + r * 0.35, q.y - r * 0.45, r * 0.1, q.x, q.y, r * 1.15);
         g.addColorStop(0, "#5868b4"); g.addColorStop(0.5, "#24306a"); g.addColorStop(1, "#0f1536");
         x.fillStyle = g; x.beginPath(); x.ellipse(q.x, q.y - r * 0.1, r * 1.05, r * 0.98, 0, Math.PI * 0.92, Math.PI * 2.12); x.closePath(); x.fill();
-        const flap = pr(add(head, add(mul(chest, -0.06), V(0, -0.05, -0.02))));
-        x.fillStyle = "#1a2353"; x.beginPath(); x.ellipse(flap.x, flap.y, r * 0.45, r * 0.55, -0.15, 0, 7); x.fill();
-        x.fillStyle = "rgba(0,0,0,.35)"; x.beginPath(); x.arc(flap.x, flap.y, r * 0.12, 0, 7); x.fill();      // 귀 구멍
-        const v = pr(add(head, add(mul(chest, 0.17), V(0, 0.02, 0))));
+        // 귀 덮개: 머리 옆(카메라 쪽 귀)에 붙는다. 정면을 볼수록 옆으로 비켜나며 좁아진다
+        const side = norm(V(hf.z, 0, -hf.x)), flap = pr(add(head, add(add(mul(side, 0.075), mul(hf, -0.015)), V(0, -0.05, 0))));
+        const fw = clamp(Math.abs(side.z) * 1.1, 0.35, 1);
+        x.fillStyle = "#1a2353"; x.beginPath(); x.ellipse(flap.x, flap.y, r * 0.45 * fw, r * 0.55, -0.15, 0, 7); x.fill();
+        x.fillStyle = "rgba(0,0,0,.35)"; x.beginPath(); x.ellipse(flap.x, flap.y, r * 0.12 * fw, r * 0.12, 0, 0, 7); x.fill();      // 귀 구멍
+        const v = pr(add(head, add(mul(hf, 0.17), V(0, 0.02, 0))));
         x.strokeStyle = "#141c44"; x.lineWidth = r * 0.24; x.lineCap = "round"; x.beginPath(); x.moveTo(q.x + (v.x - q.x) * 0.35, q.y - r * 0.08); x.lineTo(v.x, v.y); x.stroke();
         x.fillStyle = "rgba(255,255,255,.45)"; x.beginPath(); x.ellipse(q.x + r * 0.25, q.y - r * 0.55, r * 0.3, r * 0.13, -0.4, 0, 7); x.fill();
       },
@@ -1091,6 +1196,11 @@
         } });
       },
     }));
+    {
+      const C = add(head, add(mul(hf, 0.03), V(0, -0.02, 0))), rS = 0.1 * pr(C).k;
+      if (!faceHidden(pr, C, [J.lw, J.rw], rS))
+        drawFace(c, pr, C, hf, 0.1, moodOf("batter"), camFrom(BX, BD, C), { brow: -0.04, eye: -0.17, nose: -0.32, mouth: -0.62, big: 1.35 }, 0);
+    }
     // 휘두른 자국은 윤곽 없이 위에 덧그린다
     if (P && P.swung && now - P.swingT < 200 && now - P.swingT > 20) {
       c.save(); c.globalAlpha = 0.16 * (1 - (now - P.swingT) / 200); c.fillStyle = "#fff";
@@ -1254,7 +1364,7 @@
   requestAnimationFrame(frame);
 
   // 테스트용 읽기 훅
-  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; } };
+  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms) };
 })();
 </script>
 </body>
