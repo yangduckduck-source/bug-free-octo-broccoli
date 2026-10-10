@@ -651,27 +651,28 @@
 
   // 사람 하나를 층에 칠한 뒤 윤곽을 둘러 본 화면에 옮긴다
   function figure(c, pr, joints, drawParts) {
-    const PXr = cv.width / W;
-    if (layer.width !== cv.width || layer.height !== cv.height) { layer.width = sil.width = cv.width; layer.height = sil.height = cv.height; }
-    // 그릴 범위(기기 픽셀)
+    // 인물 층은 화면 크기(논리 px × S) 해상도로 칠하고, 본 화면(기기 해상도)에 확대해 붙인다 — 휴대폰에서 가볍게
+    const PXc = cv.width / W, PL = S;
+    const lw = Math.ceil(W * PL), lh = Math.ceil(H * PL);
+    if (layer.width !== lw || layer.height !== lh) { layer.width = sil.width = lw; layer.height = sil.height = lh; }
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const p of joints) { const q = pr(p); x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
     const m = 0.35 * pr(joints[0]).k;
-    const bx = Math.max(0, Math.floor((x0 - m) * PXr)), by = Math.max(0, Math.floor((y0 - m) * PXr));
-    const bw = Math.min(cv.width - bx, Math.ceil((x1 - x0 + 2 * m) * PXr)), bh = Math.min(cv.height - by, Math.ceil((y1 - y0 + 2 * m) * PXr));
-    if (bw <= 0 || bh <= 0) return;
-    lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(bx, by, bw, bh);
-    lctx.setTransform(PXr, 0, 0, PXr, 0, 0);
+    const lx = Math.max(0, Math.floor((x0 - m) * PL)), ly = Math.max(0, Math.floor((y0 - m) * PL));
+    const lW = Math.min(lw - lx, Math.ceil((x1 - x0 + 2 * m) * PL)), lH = Math.min(lh - ly, Math.ceil((y1 - y0 + 2 * m) * PL));
+    if (lW <= 0 || lH <= 0) return;
+    lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(lx, ly, lW, lH);
+    lctx.setTransform(PL, 0, 0, PL, 0, 0);
     drawParts(lctx);
-    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.clearRect(bx, by, bw, bh);
-    sctx.globalCompositeOperation = "source-over"; sctx.drawImage(layer, bx, by, bw, bh, bx, by, bw, bh);
-    sctx.globalCompositeOperation = "source-in"; sctx.fillStyle = "#0b0d18"; sctx.fillRect(bx, by, bw, bh);
+    sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.clearRect(lx, ly, lW, lH);
+    sctx.globalCompositeOperation = "source-over"; sctx.drawImage(layer, lx, ly, lW, lH, lx, ly, lW, lH);
+    sctx.globalCompositeOperation = "source-in"; sctx.fillStyle = "#0b0d18"; sctx.fillRect(lx, ly, lW, lH);
     sctx.globalCompositeOperation = "source-over";
+    const k = PXc / PL, dx0 = lx * k, dy0 = ly * k, dW = lW * k, dH = lH * k;
     c.save(); c.setTransform(1, 0, 0, 1, 0, 0);
-    const o = Math.max(1, PXr * 0.75);
-    for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o], [o * .7, o * .7], [-o * .7, o * .7], [o * .7, -o * .7], [-o * .7, -o * .7]])
-      c.drawImage(sil, bx, by, bw, bh, bx + dx, by + dy, bw, bh);
-    c.drawImage(layer, bx, by, bw, bh, bx, by, bw, bh);
+    const o = Math.max(1, PXc * 0.8);
+    for (const [dx, dy] of [[o, 0], [-o, 0], [0, o], [0, -o]]) c.drawImage(sil, lx, ly, lW, lH, dx0 + dx, dy0 + dy, dW, dH);
+    c.drawImage(layer, lx, ly, lW, lH, dx0, dy0, dW, dH);
     c.restore();
   }
 
