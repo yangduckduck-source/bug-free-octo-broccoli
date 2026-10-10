@@ -676,29 +676,38 @@
         const a = pr(add(f, V(0, 0.005, 0))), b = pr(add(f, mul(fo, 0.2))); c.strokeStyle = "#eee"; c.lineWidth = Math.max(0.6, 0.008 * a.k); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
       }, zOf(f) - 0.01);
     }
-    // 골반·몸통: 3차원 점들을 감싸는 곡선
+    // 몸통과 골반을 한 덩어리로: 어깨부터 사타구니까지 감싸는 곡선 하나를 만들고,
+    // 벨트선 위는 저지, 아래는 바지로 나눠 칠한다. (따로 그리면 허리가 끊겨 보인다)
     P3(() => {
-      const hipPts = [J.lhp, J.rhp, add(J.lhp, V(0, -0.12, 0)), add(J.rhp, V(0, -0.12, 0)), add(J.hip, mul(J.hfwd, 0.12)), add(J.hip, mul(J.hfwd, -0.13)), add(J.hip, V(0, 0.1, 0))].map(pr);
-      smoothPath(c, hull(hipPts)); let g = c.createLinearGradient(Math.min(...hipPts.map(p => p.x)), 0, Math.max(...hipPts.map(p => p.x)), 0);
-      g.addColorStop(0, tone3(kit.pants, -0.28)); g.addColorStop(0.6, kit.pants); g.addColorStop(1, tone3(kit.pants, 0.25)); c.fillStyle = g; c.fill();
-      const up = V(0, 1, 0), waist = add(J.hip, V(0, 0.16, 0)), chest = lerp3(J.hip, J.sc, 0.72);
-      const tPts = [
+      const waist = add(J.hip, V(0, 0.18, 0)), chest = lerp3(J.hip, J.sc, 0.72), down = V(0, -0.1, 0);
+      const pts = [
         add(J.lsh, V(0, 0.05, 0)), add(J.rsh, V(0, 0.05, 0)), add(J.sc, V(0, 0.08, 0)),
         add(J.lsh, mul(sub(J.lsh, J.sc), 0.25)), add(J.rsh, mul(sub(J.rsh, J.sc), 0.25)),
         add(chest, mul(J.fwd, 0.14)), add(chest, mul(J.fwd, -0.13)),
         add(waist, mul(J.hax, 0.15)), add(waist, mul(J.hax, -0.15)), add(waist, mul(J.hfwd, 0.11)), add(waist, mul(J.hfwd, -0.12)),
+        add(J.lhp, mul(J.hax, -0.06)), add(J.rhp, mul(J.hax, 0.06)), add(J.lhp, down), add(J.rhp, down),
+        add(J.hip, add(mul(J.hfwd, 0.11), V(0, -0.05, 0))), add(J.hip, add(mul(J.hfwd, -0.13), V(0, -0.04, 0))),
       ].map(pr);
-      const tp = hull(tPts);
+      const tp = hull(pts);
       smoothPath(c, tp);
       const xs = tp.map(p => p.x), ys = tp.map(p => p.y);
-      g = c.createLinearGradient(Math.min(...xs), Math.max(...ys), Math.max(...xs), Math.min(...ys));   // 왼쪽 아래 그늘 → 오른쪽 위 빛
+      const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+      let g = c.createLinearGradient(minX, maxY, maxX, minY);   // 왼쪽 아래 그늘 → 오른쪽 위 빛
       g.addColorStop(0, tone3(kit.jersey, -0.25)); g.addColorStop(0.55, kit.jersey); g.addColorStop(1, tone3(kit.jersey, 0.3));
       c.fillStyle = g; c.fill();
       J.torsoPath = tp;
+      // 벨트선 아래는 바지
+      const bl = pr(add(J.lhp, add(V(0, 0.09, 0), mul(J.hax, -0.2)))), br = pr(add(J.rhp, add(V(0, 0.09, 0), mul(J.hax, 0.2))));
+      const dx = br.x - bl.x, dy = br.y - bl.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, far = 400;
+      c.save(); smoothPath(c, tp); c.clip();
+      c.beginPath(); c.moveTo(bl.x - ux * far, bl.y - uy * far); c.lineTo(br.x + ux * far, br.y + uy * far); c.lineTo(br.x + ux * far, maxY + far); c.lineTo(bl.x - ux * far, maxY + far); c.closePath();
+      g = c.createLinearGradient(minX, maxY, maxX, minY);
+      g.addColorStop(0, tone3(kit.pants, -0.28)); g.addColorStop(0.6, kit.pants); g.addColorStop(1, tone3(kit.pants, 0.25));
+      c.fillStyle = g; c.fill();
       // 벨트
-      const a = pr(add(J.lhp, V(0, 0.08, 0))), b = pr(add(J.rhp, V(0, 0.08, 0)));
-      c.strokeStyle = kit.belt; c.lineWidth = Math.max(1.2, 0.035 * a.k); c.lineCap = "round"; c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
-      if (ex.torso) { c.save(); smoothPath(c, tp); c.clip(); ex.torso(); c.restore(); }
+      c.strokeStyle = kit.belt; c.lineWidth = Math.max(1.4, 0.04 * bl.k); c.beginPath(); c.moveTo(bl.x - ux * far, bl.y - uy * far); c.lineTo(br.x + ux * far, br.y + uy * far); c.stroke();
+      if (ex.torso) ex.torso();
+      c.restore();
     }, zOf(J.hip, J.sc) + 0.02);
     // 팔: 어깨(소매) → 위팔 → 아래팔 → 손. 몸 앞에 있으면 옅은 선으로 구분
     for (const s of ["l", "r"]) {
