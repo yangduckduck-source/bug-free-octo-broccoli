@@ -156,20 +156,22 @@
     pitch() { noise("bandpass", 600, 1, 0.25, 0.08, 0, 1800); },
     swing() { noise("bandpass", 500, 0.8, 0.18, 0.22, 0, 2400, 0.02); },
     mitt() { noise("lowpass", 900, 0.7, 0.09, 0.6); tone(110, 0.1, "sine", 0.35, 0, 60); },     // 미트에 꽂히는 퍽
-    // 알루미늄 배트 "깡!": 순간 접촉음 + 금속관이 우는 비조화 배음(1 : 2.76 : 5.4) + 짧은 몸통 울림
+    // 알루미늄 배트 "깡!": 순간 접촉음 + 퍽 하는 몸통 + 금속관이 길게 우는 비조화 배음(1 : 2.76 : 5.4)
+    // 살짝 어긋난 쌍둥이 음을 겹쳐 "까아앙" 하고 떨리며 사라진다
     ping(power = 1, ring = 1) {
-      const f = 1650 + power * 260;
-      noise("highpass", 5200, 0.7, 0.018, 0.9 * power, 0, 0, 0.001);       // 딱 맞는 찰나
-      noise("bandpass", 3200, 3, 0.05, 0.35 * power, 0, 0, 0.001);
-      tone(f, 0.34 * ring, "sine", 0.26 * power, 0, f * 0.97);
-      tone(f * 2.76, 0.2 * ring, "sine", 0.13 * power, 0, f * 2.76 * 0.98);
-      tone(f * 5.4, 0.1 * ring, "sine", 0.07 * power);
-      tone(f * 1.51, 0.16 * ring, "triangle", 0.06 * power);
-      tone(f * 0.25, 0.05, "triangle", 0.18 * power, 0, f * 0.15);          // 손에 오는 짧은 반동
-      if (power > 1.1) { tone(f, 0.32, "sine", 0.06, 0.12, f * 0.97); tone(f * 2.76, 0.16, "sine", 0.025, 0.12); }   // 관중석에 부딪혀 돌아오는 "깡" 메아리
+      const f = 1500 + power * 300;
+      noise("highpass", 4500, 0.7, 0.035, 1.0 * power, 0, 0, 0.001);       // 딱 맞는 찰나
+      noise("bandpass", 2600, 2, 0.09, 0.55 * power, 0, 0, 0.001);
+      tone(f * 0.5, 0.08, "triangle", 0.35 * power, 0, f * 0.28);           // 손바닥에 오는 퍽
+      tone(f, 0.95 * ring, "sine", 0.42 * power, 0, f * 0.965);
+      tone(f * 1.007, 0.85 * ring, "sine", 0.22 * power, 0, f * 0.972);
+      tone(f * 2.76, 0.5 * ring, "sine", 0.2 * power, 0, f * 2.76 * 0.98);
+      tone(f * 5.4, 0.26 * ring, "sine", 0.1 * power);
+      tone(f * 1.51, 0.35 * ring, "triangle", 0.1 * power);
+      if (power > 1.1) { tone(f, 0.6, "sine", 0.1, 0.14, f * 0.965); tone(f * 2.76, 0.3, "sine", 0.05, 0.14); }   // 관중석에 부딪혀 돌아오는 메아리
     },
-    crack(power) { this.ping(power, 0.8 + power * 0.4); },
-    tip() { this.ping(0.55, 0.35); },                // 빗맞은 "팅" (파울·범타)
+    crack(power) { this.ping(power, 0.6 + power * 0.45); },
+    tip() { this.ping(0.7, 0.4); },                 // 빗맞은 "팅" (파울·범타)
     dull() { noise("bandpass", 700, 1.5, 0.09, 0.45); tone(300, 0.08, "triangle", 0.2, 0, 180); },
     crowd(vol = 0.2, dur = 1.6) { noise("bandpass", 900, 0.6, dur, vol, 0, 0, dur * 0.25); noise("bandpass", 2200, 0.8, dur * 0.8, vol * 0.5, 0.05, 0, dur * 0.2); },
     groan() { noise("lowpass", 500, 0.7, 0.9, 0.15, 0, 0, 0.2); },
@@ -407,6 +409,24 @@
   });
   window.addEventListener("pointerdown", e => { if (e.target.closest && e.target.closest("button")) return; e.preventDefault(); press(e); });
 
+  // ================= 진동 =================
+  // 안드로이드는 vibrate, 아이폰(사파리 18 이상)은 스위치를 켤 때 나는 '톡' 햅틱을 빌린다
+  const hapticSwitch = (() => {
+    try {
+      const l = document.createElement("label"), i = document.createElement("input");
+      i.type = "checkbox"; i.setAttribute("switch", ""); i.tabIndex = -1; l.appendChild(i);
+      l.setAttribute("aria-hidden", "true"); l.style.cssText = "position:fixed;left:-200px;top:0;opacity:0;pointer-events:none";
+      document.body.appendChild(l); return l;
+    } catch (e) { return null; }
+  })();
+  const BUZZ = { hr: [45, 35, 70], double: [55], single: [40], out: [18], foul: [18] };
+  function buzz(kind, delay) {
+    const pat = BUZZ[kind]; if (!pat) return;
+    let vib = false;
+    try { if (navigator.vibrate) { vib = true; delay > 20 ? setTimeout(() => navigator.vibrate(pat), delay) : navigator.vibrate(pat); } } catch (e) {}
+    if (!vib && hapticSwitch) { try { hapticSwitch.click(); } catch (e) {} }   // 아이폰은 누르는 순간 안에서만 울린다
+  }
+
   // ================= 타임 =================
   const timeBtn = $("#time");
   function setPause(on) {
@@ -445,6 +465,7 @@
     if (tier < 3 && (P.type === "knuckle" || P.type === "fork") && Math.random() < 0.25) tier++;
     const kinds = ["hr", "double", "single", "out", "foul", "whiff"];
     P.pending = kinds[tier];
+    buzz(P.pending, Math.max(0, Math.min(P.tArr + 8, now + 30) - now));
     // 결과는 공이 홈에 닿는 순간에 낸다 (일찍 휘둘렀으면 그때까지 기다림)
     if (P.pending === "whiff") P.resolveAt = Math.max(now, P.tArr);
     else P.resolveAt = Math.max(now, Math.min(P.tArr + 8, now + 30));
@@ -455,17 +476,17 @@
     const late = P.delta > 0;
     switch (kind) {
       // 맞힌 공: 지금은 소리와 함께 날리기만 하고, 판정은 공이 떨어지거나 넘어갈 때 낸다
-      case "hr":     sfx.crack(1.4);  sfx.crowd(0.18, 1.2); launch(rand(42, 48), rand(26, 34), (late ? 1 : -1) * rand(2, 22)); break;
-      case "double": sfx.crack(1.1);  sfx.crowd(0.14, 1.0); launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34)); break;
-      case "single": sfx.crack(0.95); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
+      case "hr":     sfx.crack(1.4); impact("hr");  sfx.crowd(0.18, 1.2); launch(rand(42, 48), rand(26, 34), (late ? 1 : -1) * rand(2, 22)); break;
+      case "double": sfx.crack(1.1); impact("double");  sfx.crowd(0.14, 1.0); launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34)); break;
+      case "single": sfx.crack(0.95); impact("single"); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
       case "out": {
-        sfx.tip();
+        sfx.tip(); impact("out");
         P.fly = Math.random() < 0.55;
         launch(P.fly ? rand(24, 30) : rand(16, 22), P.fly ? rand(38, 55) : rand(-8, 2), (late ? 1 : -1) * rand(0, 35));
         break;
       }
       case "foul": {
-        sfx.tip();
+        sfx.tip(); impact("foul");
         P.back = Math.random() < 0.4;
         if (P.back) launch(rand(18, 26), rand(55, 75), 180 + rand(-25, 25));
         else launch(rand(22, 30), rand(10, 30), (late ? 1 : -1) * rand(50, 70));
@@ -546,6 +567,46 @@
   }
 
   // 맞은 공: 3D 포물선으로 날린다 (속도 m/s, 발사각, 좌우각)
+  // 맞는 순간: 멈칫(히트스톱) → 화면 흔들림·확대 → 흰 번쩍임 → 충격 고리와 불꽃 → "깡!"
+  let jolt = null, stopAt = 0, stopLen = 0;
+  const JOLT = { hr: [95, 10, 0.07, 0.5], double: [75, 7, 0.05, 0.36], single: [60, 5, 0.035, 0.26], out: [35, 3, 0.015, 0.1], foul: [35, 3, 0.015, 0.1] };
+  function impact(kind) {
+    const [stop, amp, zoom, flash] = JOLT[kind], s = ballScreen({ x: 0, y: 0.9, d: PLATE_D }), good = kind !== "out" && kind !== "foul";
+    jolt = { at: performance.now(), amp, zoom, flash, x: s.sx, y: s.sy, word: good ? "깡!" : "팅", big: kind === "hr" ? 1.35 : good ? 1 : 0.7, good };
+    stopAt = performance.now(); stopLen = stop;
+    const n = good ? 22 : 8;
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, Math.PI * 2), sp = rand(2, good ? 6.5 : 3.5);
+      fx.push({ x: s.sx, y: s.sy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, t: 0, life: rand(0.22, 0.45), col: pick(["#fff7d1", "#ffd659", "#ffffff"]) });
+    }
+  }
+  function drawImpact(c) {
+    if (!jolt) return;
+    const e = performance.now() - jolt.at;
+    // 충격 고리 + 빛살
+    if (e < 260) {
+      const u = e / 260, r = (jolt.good ? 10 : 6) + u * (jolt.good ? 70 : 34) * jolt.big;
+      c.save(); c.globalAlpha = (1 - u) * 0.9; c.strokeStyle = "#fff4c2"; c.lineWidth = 5 * (1 - u) + 1;
+      c.beginPath(); c.arc(jolt.x, jolt.y, r, 0, 7); c.stroke();
+      if (jolt.good) {
+        c.lineWidth = 3 * (1 - u) + 0.5; c.beginPath();
+        for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2 + 0.3; c.moveTo(jolt.x + Math.cos(a) * r * 0.5, jolt.y + Math.sin(a) * r * 0.5); c.lineTo(jolt.x + Math.cos(a) * r * 1.25, jolt.y + Math.sin(a) * r * 1.25); }
+        c.stroke();
+      }
+      c.restore();
+    }
+    // "깡!" 글자: 튀어나왔다가 떠오르며 사라진다
+    if (e < 650) {
+      const u = e / 650, pop = u < 0.15 ? 0.5 + u / 0.15 * 0.7 : 1.2 - Math.min(0.2, (u - 0.15) * 0.6);
+      c.save(); c.globalAlpha = u < 0.7 ? 1 : (1 - u) / 0.3;
+      c.translate(jolt.x + 34, jolt.y - 36 - u * 26); c.rotate(-0.18); c.scale(pop * jolt.big, pop * jolt.big);
+      c.font = "34px 'Black Han Sans', sans-serif"; c.textAlign = "center";
+      c.lineWidth = 7; c.strokeStyle = "rgba(20,12,0,.75)"; c.strokeText(jolt.word, 0, 0);
+      c.fillStyle = jolt.good ? "#ffd84a" : "#e8ecf5"; c.fillText(jolt.word, 0, 0);
+      c.restore();
+    }
+  }
+
   function launch(v, ang, spray) {
     const a = ang * Math.PI / 180, s = spray * Math.PI / 180;
     P.hit = { x: 0, y: 0.9, d: PLATE_D, vx: v * Math.cos(a) * Math.sin(s), vy: v * Math.sin(a), vd: v * Math.cos(a) * Math.cos(s), t0: now, trail: [] };
@@ -1141,7 +1202,19 @@
       const b = bgCache.getContext("2d"); b.setTransform(S * dpr, 0, 0, S * dpr, 0, 0);
       drawBackground(b);
     }
-    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bgCache, 0, 0); ctx.restore();
+    // 맞는 순간의 흔들림·확대 (전광판·글자는 흔들지 않는다)
+    let shaking = false;
+    if (jolt) {
+      const e = performance.now() - jolt.at, d = Math.max(0, 1 - e / 320);
+      if (e > 700) jolt = null;
+      else if (d > 0) {
+        const a = jolt.amp * d * d, z = 1 + jolt.zoom * d + (a * 2.4) / Math.min(W, H);
+        shaking = true; ctx.save();
+        ctx.translate(jolt.x + (Math.random() * 2 - 1) * a, jolt.y + (Math.random() * 2 - 1) * a * 0.7); ctx.scale(z, z); ctx.translate(-jolt.x, -jolt.y);
+      }
+    }
+    if (shaking) ctx.drawImage(bgCache, 0, 0, W, H);
+    else { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bgCache, 0, 0); ctx.restore(); }
     // 관중석 플래시 (홈런 때)
     if (P && P.called === "hr") for (let i = 0; i < 18; i++) { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(Math.random() * W, 152 + Math.random() * 90, 2, 2); }
     const hand = drawPitcher(ctx).hand;
@@ -1151,6 +1224,9 @@
     drawBatter(ctx);
     for (const f of fx) { ctx.globalAlpha = 1 - f.t / f.life; ctx.fillStyle = f.col; ctx.fillRect(f.x, f.y, 3, 3); }
     ctx.globalAlpha = 1;
+    drawImpact(ctx);
+    if (shaking) ctx.restore();
+    if (jolt) { const e = performance.now() - jolt.at; if (e < 140) { ctx.fillStyle = `rgba(255,252,235,${jolt.flash * (1 - e / 140)})`; ctx.fillRect(0, 0, W, H); } }
     if (state !== "title" && G) drawBoard(ctx);
     drawMsg(ctx);
   }
@@ -1160,6 +1236,10 @@
   function frame(t) {
     now = gameNow();
     if (paused) { last = t; draw(); requestAnimationFrame(frame); return; }
+    if (stopAt) {
+      if (performance.now() - stopAt < stopLen) { now = stopAt - pauseAcc; last = t; draw(); requestAnimationFrame(frame); return; }
+      pauseAcc += stopLen; stopAt = 0; now = gameNow();
+    }
     acc += Math.min(0.1, (t - last) / 1000); last = t;
     while (acc >= 1 / 60) { update(); acc -= 1 / 60; }
     draw();
