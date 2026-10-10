@@ -102,6 +102,8 @@
   .hand .card.match { transform: translateY(-9px); }
   .hand .card.match .front { box-shadow: 0 0 0 3px var(--gold), 0 8px 16px rgba(0,0,0,.2); }
   .hand.wait .card { cursor: default; }
+  .no-aid .aid { display: none; }
+  .card.air .face { box-shadow: 0 16px 22px rgba(0,0,0,.35); }
 
   /* 카드: 앞면·뒷면 두 겹, 뒤집힐 때 실제로 돈다 */
   .card { position: relative; display: block; aspect-ratio: 2 / 3; perspective: 600px; transition: transform .16s ease; }
@@ -256,149 +258,215 @@
   const nameOf = c => `${c.m}월 ${label(c)}`;
 
   // ================= 화투 그림 =================
-  // 실제 화투의 구도와 색(붉은 해·장막·달, 검은 싸리, 비광의 우산)을 따르되
-  // 왼쪽 위 월 숫자와 아래 글자 띠로 한눈에 읽히게 한다. 그림 영역 좌표계는 100 × 128.
-  const O = "#151515", RED = "#cf1f2b", RED2 = "#e8473f", PAPER = "#f6eedb", GREEN = "#1f5c34", GREEN2 = "#2f7a44",
-        BLACK = "#1b1b1b", YEL = "#f3c623", PURP = "#5a3d98", BLUE = "#2456c9", BROWN = "#6b3f1f", WHITE = "#fffdf6";
+  // 원조 화투의 화풍: 흰 바탕, 굵은 붉은 테두리, 빨강·검정·노랑·파랑 네 가지 원색.
+  // 그림 좌표계는 테두리 안쪽 90 × 140. 월 숫자와 아래 글자는 .aid 묶음이라 규칙 창에서 끌 수 있다.
+  const RD = "#e2141d", BK = "#121212", YL = "#f6d000", BL = "#1d3fd6", WH = "#ffffff", PK = "#f7b3bd";
   const R = (x, y, w, h, f, ex = "") => `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${f}" ${ex}/>`;
   const C = (x, y, r, f, ex = "") => `<circle cx="${x}" cy="${y}" r="${r}" fill="${f}" ${ex}/>`;
   const E = (x, y, rx, ry, f, rot = 0, ex = "") => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${f}" transform="rotate(${rot} ${x} ${y})" ${ex}/>`;
   const Pt = (d, f, s = "none", w = 0, ex = "") => `<path d="${d}" fill="${f}" stroke="${s}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" ${ex}/>`;
   const T = (x, y, t, size, f, ex = "") => `<text x="${x}" y="${y}" font-size="${size}" fill="${f}" font-weight="900" text-anchor="middle" font-family="Noto Sans KR, Apple SD Gothic Neo, Malgun Gothic, sans-serif" ${ex}>${t}</text>`;
-  const ol = `stroke="${O}" stroke-width="1.3"`;
+  const ink = (w = 1.2) => `stroke="${BK}" stroke-width="${w}"`;
+  // 카드마다 같은 그림이 나오도록 고정된 난수
+  function rng(seed) { let a = seed * 9301 + 49297; return () => { a = (a * 1103515245 + 12345) % 2147483648; return a / 2147483648; }; }
 
-  const cloudBand = (y, col = RED) => Pt(`M0 ${y} Q12 ${y - 8} 24 ${y} T48 ${y} T72 ${y} T96 ${y} L100 ${y} V128 H0Z`, col, O, 1.2);
-  const pineClump = (x, y, s) => Pt(`M${x - 20 * s} ${y} Q${x - 14 * s} ${y - 16 * s} ${x} ${y - 18 * s} Q${x + 14 * s} ${y - 16 * s} ${x + 20 * s} ${y} Z`, GREEN, O, 1.4) +
-    [-12, -6, 0, 6, 12].map(d => Pt(`M${x} ${y} L${x + d * s} ${y - 14 * s}`, "none", "#0f3a1f", 1)).join("");
-  const plum = (x, y, r = 6) => [0, 1, 2, 3, 4].map(i => C(x + Math.cos(i * 1.2566 - 1.57) * r * 0.55, y + Math.sin(i * 1.2566 - 1.57) * r * 0.55, r * 0.5, RED, ol)).join("") + C(x, y, r * 0.28, YEL);
-  const blossom = (x, y, r) => [0, 1, 2, 3, 4].map(i => C(x + Math.cos(i * 1.2566) * r * 0.55, y + Math.sin(i * 1.2566) * r * 0.55, r * 0.5, "#fbe3ea", `stroke="${RED}" stroke-width="1"`)).join("") + C(x, y, r * 0.22, RED);
-  const strand = (x, len, leaf, flower) => {
-    let s = Pt(`M${x} 0 Q${x + 5} ${len / 2} ${x - 2} ${len}`, "none", O, 1.6);
-    for (let y = 8; y < len; y += 9) s += E(x - 4 + (y % 18 ? 0 : 1), y, 5, 2.4, leaf, 35, `stroke="${O}" stroke-width=".6"`) + E(x + 4, y + 4, 5, 2.4, leaf, -35, `stroke="${O}" stroke-width=".6"`);
-    if (flower) for (let y = 14; y < len; y += 18) s += C(x + 1, y, 2, flower);
+  // ---- 공통 모양 ----
+  // 솔잎 덤불: 검은 뾰족 잎이 부채꼴로
+  function pineTuft(x, y, w, h, rnd) {
+    let d = `M${x} ${y}`;
+    const n = 7;
+    for (let i = 0; i < n; i++) {
+      const x0 = x + (w / n) * i, x1 = x0 + w / n;
+      const tip = y - h * (0.6 + rnd() * 0.4);
+      d += ` L${(x0 + x1) / 2 + (rnd() - 0.5) * 4} ${tip} L${x1} ${y - h * 0.15 * rnd()}`;
+    }
+    return Pt(d + ` L${x + w} ${y + 6} L${x} ${y + 6}Z`, BK) + Pt(`M${x + w * 0.3} ${y - h * 0.3} L${x + w * 0.5} ${y - h * 0.8} M${x + w * 0.65} ${y - h * 0.3} L${x + w * 0.75} ${y - h * 0.7}`, "none", WH, 0.8);
+  }
+  const flower5 = (x, y, r, petal, center = YL, edge = BK) =>
+    [0, 1, 2, 3, 4].map(i => C(x + Math.cos(i * 1.2566 - 1.57) * r * 0.58, y + Math.sin(i * 1.2566 - 1.57) * r * 0.58, r * 0.52, petal, ink(0.8))).join("") + C(x, y, r * 0.3, center, `stroke="${edge}" stroke-width=".6"`);
+  const branch = (d, w = 4) => Pt(d, "none", BK, w);
+  const scallop = (y, col = RD) => {     // 화투 위쪽의 붉은 구름(가스미)
+    let d = `M0 0 H90 V${y}`;
+    for (let x = 90; x > 0; x -= 15) d += ` Q${x - 7.5} ${y + 9} ${x - 15} ${y}`;
+    return Pt(d + "Z", col, BK, 1);
+  };
+  const hill = (top, col = BK) => Pt(`M0 140 L0 ${top + 34} Q45 ${top - 10} 90 ${top + 34} L90 140Z`, col);
+  const leafStrand = (x, y0, len, col, rnd, swirl) => {
+    let s = Pt(`M${x} ${y0} Q${x + 6} ${y0 + len / 2} ${x - 3} ${y0 + len}`, "none", col, 1.6);
+    for (let y = y0 + 6; y < y0 + len; y += 8) {
+      const side = (y / 8) % 2 ? 1 : -1;
+      s += E(x + side * 4.5, y, 4.4, 1.9, col, side * 35);
+    }
+    if (swirl) s += Pt(`M${x + 6} ${y0 + len - 4} a4 4 0 1 1 4 4`, "none", BK, 1);
     return s;
   };
-  const maple = (x, y, r, f = RED) => {
+  const iris = (x, y, s = 1) => Pt(`M${x} ${y} q${-9 * s} ${-3 * s} ${-8 * s} ${-12 * s} q${5 * s} ${2 * s} ${8 * s} ${8 * s}Z`, BL, BK, .8) +
+    Pt(`M${x} ${y} q${9 * s} ${-3 * s} ${8 * s} ${-12 * s} q${-5 * s} ${2 * s} ${-8 * s} ${8 * s}Z`, BL, BK, .8) +
+    Pt(`M${x} ${y} q${-3 * s} ${-10 * s} 0 ${-16 * s} q${3 * s} ${6 * s} 0 ${16 * s}Z`, BL, BK, .8) + E(x, y + 3 * s, 3 * s, 4 * s, BL, 0, ink(.6)) + C(x, y - 3 * s, 1.4 * s, YL);
+  const sword = (x, y, h, lean) => Pt(`M${x} ${y} Q${x + lean * 0.5} ${y - h * 0.6} ${x + lean} ${y - h} Q${x + lean * 0.3 + 3} ${y - h * 0.5} ${x + 5} ${y}Z`, BK);
+  const peony = (x, y, r, col) => C(x, y, r, col, ink()) +
+    Pt(`M${x - r * 0.75} ${y - r * 0.1} Q${x} ${y - r * 0.95} ${x + r * 0.75} ${y - r * 0.1}`, "none", BK, 1) +
+    Pt(`M${x - r * 0.5} ${y + r * 0.35} Q${x} ${y - r * 0.35} ${x + r * 0.5} ${y + r * 0.35}`, "none", BK, 1) + C(x, y + r * 0.15, r * 0.22, YL, ink(.6));
+  const clover = (x, y, len, rnd) => {
+    let s = Pt(`M${x} ${y} q${(rnd() - 0.5) * 10} ${-len / 2} ${(rnd() - 0.5) * 6} ${-len}`, "none", RD, 1.4);
+    for (let i = 1; i < 6; i++) { const yy = y - (len / 6) * i, xx = x + (rnd() - 0.5) * 3; s += E(xx - 3.5, yy, 3.2, 1.6, RD, -30) + E(xx + 3.5, yy - 1, 3.2, 1.6, RD, 30); }
+    return s;
+  };
+  const maple = (x, y, r, f) => {
     let d = "";
-    for (let i = 0; i < 14; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 7, rr = i % 2 ? r * 0.45 : r;
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r;
       d += (i ? "L" : "M") + (x + Math.cos(a) * rr).toFixed(1) + " " + (y + Math.sin(a) * rr).toFixed(1);
     }
-    return Pt(d + "Z", f, O, 1);
+    return Pt(d + "Z", f, BK, 0.9);
   };
-  const mum = (x, y, r) => {
+  const mum = (x, y, r, outer, inner) => {
     let s = "";
-    for (let i = 0; i < 14; i++) s += E(x + Math.cos(i * 0.4488) * r * 0.62, y + Math.sin(i * 0.4488) * r * 0.62, r * 0.42, r * 0.16, YEL, i * 25.7, `stroke="${O}" stroke-width=".6"`);
-    return s + C(x, y, r * 0.32, RED, ol);
+    for (let i = 0; i < 16; i++) s += E(x + Math.cos(i * 0.3927) * r * 0.62, y + Math.sin(i * 0.3927) * r * 0.62, r * 0.4, r * 0.15, outer, i * 22.5, ink(.5));
+    for (let i = 0; i < 10; i++) s += E(x + Math.cos(i * 0.628) * r * 0.3, y + Math.sin(i * 0.628) * r * 0.3, r * 0.22, r * 0.1, inner, i * 36);
+    return s + C(x, y, r * 0.14, BK);
   };
-  const peony = (x, y, r) => C(x, y, r, RED, ol) + Pt(`M${x - r * 0.7} ${y} Q${x} ${y - r * 0.9} ${x + r * 0.7} ${y}`, "none", "#8f0f17", 1.4) +
-    Pt(`M${x - r * 0.5} ${y + r * 0.35} Q${x} ${y - r * 0.3} ${x + r * 0.5} ${y + r * 0.35}`, "none", "#8f0f17", 1.4) + C(x, y + r * 0.1, r * 0.25, "#f6b0b5");
   const ribbon = rib => {
-    const col = rib === "cheong" ? BLUE : RED;
-    let s = `<g transform="rotate(-8 50 70)">` + R(37, 18, 26, 84, col, `rx="2" ${ol}`) + Pt("M37 102 L44 110 L50 102 L56 110 L63 102", col, O, 1.3);
-    if (rib === "bi") s += R(37, 44, 26, 5, BLACK) + R(37, 70, 26, 5, BLACK);
-    else if (rib !== "cho") s += T(50, 50, RIB[rib][0], 17, "#fff") + T(50, 74, RIB[rib][1], 17, "#fff");
+    const col = rib === "cheong" ? BL : rib === "hong" ? RD : YL;
+    let s = `<g transform="rotate(-22 30 50)">` + R(20, 4, 20, 82, col, ink(1.2)) + Pt("M20 86 L26 93 L30 86 L34 93 L40 86", col, BK, 1.2);
+    if (rib === "hong") s += T(30, 40, "홍", 15, BK) + T(30, 60, "단", 15, BK);
+    if (rib === "cheong") s += T(30, 40, "청", 15, YL) + T(30, 60, "단", 15, YL);
     return s + "</g>";
   };
+  const gwangMark = (x, y) => C(x, y, 8.5, RD, `stroke="${WH}" stroke-width="1.6"`) + T(x, y + 4.3, "광", 11, WH);
 
   function art(c) {
-    const g = c.kind === "gwang", y = c.kind === "yeol", p = c.kind === "pi";
-    let s = R(0, 0, 100, 128, PAPER);
+    const g = c.kind === "gwang", y = c.kind === "yeol", t = c.kind === "tti";
+    const rnd = rng(c.id + 7);
+    let s = "";
     switch (c.m) {
-      case 1: // 송학: 붉은 해, 소나무, 학, 아래 붉은 구름
-        if (g) s += C(70, 34, 26, RED, ol);
-        s += cloudBand(108);
-        s += Pt("M10 128 C22 100 34 84 70 62", "none", "#3b2416", 9) + Pt("M40 90 C50 70 54 50 50 30", "none", "#3b2416", 5);
-        s += pineClump(64, 62, 1.1) + pineClump(46, 36, 0.9) + pineClump(28, 76, 0.85) + pineClump(84, 80, 0.75);
-        if (g) s += E(36, 104, 20, 10, WHITE, -10, ol) + Pt("M20 100 L8 96 L18 108Z", BLACK) + Pt("M50 100 C58 86 60 72 56 60", "none", BLACK, 4) +
-                    C(56, 58, 4.5, WHITE, ol) + C(56, 54.5, 2.6, RED) + Pt("M60 58 L70 61", "none", O, 2) + Pt("M32 112 L30 126 M40 112 L42 126", "none", O, 1.6);
-        break;
-      case 2: // 매조: 검은 매화 가지, 붉은 꽃, 꾀꼬리
-        s += cloudBand(112, RED2);
-        s += Pt("M8 124 L26 96 L22 74 L44 56 L42 34 L64 18 L80 4", "none", BLACK, 6) + Pt("M44 56 L70 60 L88 48", "none", BLACK, 4);
-        for (const [x, yy] of [[26, 96], [22, 74], [44, 56], [42, 34], [64, 18], [70, 60], [88, 48], [80, 6], [34, 84]]) s += plum(x, yy, 9);
-        if (y) s += `<g transform="translate(58 86)">` + E(0, 0, 13, 7.5, "#a7a234", -15, ol) + C(11, -6, 5.5, "#a7a234", ol) + Pt("M15 -7 L22 -5 L15 -3Z", YEL, O, .8) +
-                    Pt("M-4 -3 Q-12 -16 6 -9Z", "#7f7d21", O, 1) + Pt("M-12 2 L-22 0 L-18 7Z", "#7f7d21", O, 1) + C(12, -7, 1.3, O) + `</g>`;
-        break;
-      case 3: // 벚꽃: 꽃구름, 광은 붉은 장막
+      case 1: { // 송학
         if (g) {
-          s += R(0, 62, 100, 66, RED, ol);
-          for (let i = 0; i < 5; i++) s += R(2 + i * 20, 62, 8, 66, "#f2e3c7");
-          for (const [x, yy] of [[20, 90], [60, 100], [80, 78], [40, 114]]) s += C(x, yy, 7, WHITE, ol) + C(x, yy, 3, RED);
-          s += Pt("M0 62 Q50 52 100 62", "none", O, 2.4) + Pt("M10 58 L10 66 M50 54 L50 62 M90 58 L90 66", "none", O, 2);
-        } else s += cloudBand(104, RED2);
-        s += Pt("M6 70 Q30 50 48 26", "none", BLACK, 4);
-        for (const [x, yy, r] of [[18, 20, 11], [38, 14, 12], [58, 22, 11], [78, 16, 12], [28, 38, 10], [50, 40, 11], [72, 38, 10], [90, 34, 9], [12, 48, 9]]) s += blossom(x, yy, r);
-        break;
-      case 4: // 흑싸리: 늘어진 검은 잎, 두견새와 초승달
-        if (y) s += R(0, 0, 100, 128, "#e8d7b5") + Pt("M70 10 A16 16 0 1 0 86 34 A12 12 0 1 1 70 10Z", YEL, O, 1.2);
-        for (const x of [12, 30, 48, 66, 84]) s += strand(x, y ? 70 : 100, BLACK, RED);
-        if (!y) s += cloudBand(112, RED2);
-        if (y) s += `<g transform="translate(46 96)">` + E(0, 0, 18, 6, BLACK, -8) + Pt("M-6 -2 Q4 -24 20 -16 Q8 -8 4 0Z", BLACK) + Pt("M-6 2 Q2 18 18 16 Q8 8 2 2Z", BLACK) +
-                    C(18, -3, 5, BLACK) + E(4, 4, 8, 3, RED, -8) + Pt("M22 -3 L28 -1", "none", YEL, 2) + Pt("M-16 0 L-28 -6 L-26 4Z", BLACK) + `</g>`;
-        break;
-      case 5: // 난초(창포): 긴 잎, 보라 꽃, 열끗은 나무다리
-        for (const [x, b] of [[14, -4], [26, 6], [40, -2], [54, 8], [68, -6], [82, 4], [92, -2]]) s += Pt(`M${x} 128 Q${x + b} 80 ${x + b * 2} 26`, "none", GREEN, 3.2);
-        for (const [x, yy] of [[24, 30], [52, 22], [78, 30], [38, 50], [66, 48]]) s += E(x - 5, yy, 8, 4, PURP, -35, ol) + E(x + 5, yy, 8, 4, PURP, 35, ol) + E(x, yy - 7, 4, 8, "#7c5fc4", 0, ol) + C(x, yy, 1.8, YEL);
-        if (y) s += Pt("M0 104 L30 88 L56 104 L86 88 L100 96 L100 110 L86 102 L56 118 L30 102 L0 118Z", "#a8743c", O, 1.4) + Pt("M15 96 L15 112 M43 96 L43 112 M71 96 L71 112", "none", O, 1);
-        break;
-      case 6: // 모란: 붉은 꽃 두 송이, 검푸른 잎, 열끗은 나비
-        for (const [x, yy, r] of [[22, 92, 14], [80, 96, 14], [52, 110, 12], [12, 64, 10], [88, 66, 10]]) s += E(x, yy, r, r * 0.45, GREEN, x < 50 ? -30 : 30, ol);
-        s += peony(36, 74, 17) + peony(68, 82, 15);
-        if (y) for (const [x, yy, f] of [[30, 26, YEL], [72, 34, "#3c7fd6"]]) s += E(x - 7, yy - 3, 8, 11, f, -25, ol) + E(x + 7, yy - 3, 8, 11, f, 25, ol) + E(x - 5, yy + 8, 5, 6, f, 20, ol) + E(x + 5, yy + 8, 5, 6, f, -20, ol) + E(x, yy + 2, 1.8, 10, O);
-        break;
-      case 7: // 홍싸리: 붉은 잎 가지, 열끗은 멧돼지
-        for (const x of [10, 28, 46, 64, 82]) s += strand(x, y ? 76 : 104, RED, null);
-        if (!y) s += cloudBand(114, "#8b1a1a");
-        if (y) s += `<g transform="translate(50 104)">` + E(0, 0, 26, 12, "#5a3a20", 0, ol) + E(24, -4, 10, 8, "#5a3a20", 15, ol) + Pt("M31 -2 L38 2", "none", WHITE, 2) + C(26, -7, 1.5, O) +
-                    R(-18, 8, 5, 12, "#3d2814") + R(-6, 8, 5, 12, "#3d2814") + R(8, 8, 5, 12, "#3d2814") + Pt("M-22 -12 L-10 -14 L2 -12 L14 -14", "none", O, 1.5) + `</g>`;
-        break;
-      case 8: { // 공산: 검은 언덕과 억새, 광은 붉은 하늘에 흰 달, 열끗은 기러기
-        if (g) s += R(0, 0, 100, 128, RED) + C(50, 38, 26, WHITE, ol);
-        else if (y) s += R(0, 0, 100, 70, "#f3d36b");
-        s += Pt("M0 128 L0 82 Q50 40 100 82 L100 128Z", BLACK);
-        for (let x = 10; x < 92; x += 7) s += Pt(`M${x} 126 Q${x + 3} 100 ${x + 8} ${74 + Math.abs(50 - x) * 0.5}`, "none", "#f5f0e2", 1.3);
-        if (y) for (const [x, yy] of [[28, 26], [52, 16], [74, 28]]) s += Pt(`M${x - 11} ${yy + 2} Q${x - 5} ${yy - 7} ${x} ${yy} Q${x + 5} ${yy - 7} ${x + 11} ${yy + 2}`, "none", O, 3.4) + E(x, yy + 1, 3, 2, O);
+          s += Pt("M90 0 V44 A44 44 0 0 1 46 0Z", RD, BK, 1);                   // 붉은 해
+          s += Pt("M30 112 C18 104 16 84 30 74 C40 68 52 74 50 86 C48 96 40 100 30 112Z", WH, BK, 1.4);   // 학 몸
+          s += Pt("M22 80 C10 84 6 98 14 108 M26 84 C16 92 16 102 20 110 M30 86 C24 96 26 104 28 112", "none", BK, 1.4);
+          s += Pt("M44 76 C48 60 40 44 30 34", "none", BK, 3.2) + Pt("M44 76 C48 60 40 44 30 34", "none", WH, 1.2);
+          s += C(29, 32, 4, WH, ink(1)) + C(29, 29.5, 2.4, RD) + Pt("M26 33 L14 38", "none", BK, 1.6) + C(30.5, 31.5, .8, BK);
+          s += Pt("M34 112 L32 132 M40 110 L42 132", "none", BK, 1.4);
+          s += pineTuft(46, 140, 44, 62, rnd) + pineTuft(56, 104, 34, 36, rnd);
+          s += gwangMark(74, 126);
+        } else {
+          s += branch("M4 140 Q26 100 64 70", 4);
+          s += pineTuft(0, 140, 46, 86, rnd) + pineTuft(40, 140, 50, 96, rnd) + pineTuft(14, 92, 44, 48, rnd) + pineTuft(48, 70, 40, 40, rnd);
+        }
         break;
       }
-      case 9: // 국화: 노란 꽃, 열끗(국진)은 붉은 술잔
-        s += E(24, 104, 16, 7, GREEN, -25, ol) + E(76, 106, 16, 7, GREEN, 25, ol) + E(50, 116, 14, 6, GREEN2, 0, ol);
-        s += mum(30, 40, 20) + mum(70, 54, 18) + mum(46, 84, 15);
-        if (y) s += Pt("M30 92 L70 92 L62 116 L38 116Z", RED, O, 1.4) + E(50, 92, 20, 5, "#ef5a4f", 0, ol) + R(44, 116, 12, 6, RED, ol) + T(50, 110, "壽", 14, YEL);
+      case 2: { // 매조
+        s += scallop(22);
+        s += branch("M6 140 L22 112 L18 88 L40 70 L36 50 L60 34 L84 26", 5) + branch("M40 70 L64 76 L84 64", 3.5);
+        for (const [x, yy] of [[22, 112], [18, 88], [40, 70], [36, 50], [60, 34], [64, 76], [84, 64], [30, 128], [76, 30], [52, 92]]) s += flower5(x, yy, 9, RD);
+        if (y) s += `<g transform="translate(46 100)">` + E(0, 0, 16, 9, YL, -15, ink(1.2)) + C(13, -8, 6.5, YL, ink(1.2)) + Pt("M18 -9 L26 -7 L18 -4Z", BK) +
+                    Pt("M-6 -4 Q-10 -18 10 -10Z", BK) + Pt("M-14 2 L-26 0 L-22 8Z", BK) + C(14, -9, 1.6, BK) + Pt("M8 -14 Q12 -16 18 -12", "none", BK, 1.5) + `</g>`;
         break;
-      case 10: // 단풍: 붉은 잎, 열끗은 사슴
-        s += Pt("M0 30 Q40 40 60 20 M60 20 L90 8 M40 34 L50 60", "none", BLACK, 3);
-        for (const [x, yy, r] of [[16, 22, 12], [40, 16, 11], [62, 30, 12], [86, 18, 11], [30, 48, 11], [54, 58, 12], [80, 52, 11], [16, 74, 10], [70, 78, 10]]) s += maple(x, yy, r);
-        if (y) s += `<g transform="translate(46 100)">` + E(0, 0, 22, 10, "#b5733a", 0, ol) + E(22, -14, 7, 9, "#b5733a", -20, ol) + C(24, -16, 1.4, O) +
-                    Pt("M20 -22 L14 -34 M16 -28 L10 -30 M26 -22 L32 -34 M30 -28 L36 -30", "none", BROWN, 2) +
-                    R(-16, 8, 4, 18, "#7a4a22") + R(-6, 8, 4, 18, "#7a4a22") + R(8, 8, 4, 18, "#7a4a22") + R(15, 8, 4, 18, "#7a4a22") +
-                    C(-6, -3, 2, WHITE) + C(4, 2, 2, WHITE) + C(-12, 3, 1.6, WHITE) + `</g>`;
+      }
+      case 3: { // 벚꽃
+        const cols = [RD, BK, WH, RD, PK];
+        for (let i = 0; i < 26; i++) {
+          const x = 8 + rnd() * 74, yy = 8 + rnd() * (g ? 58 : 100), col = cols[i % cols.length];
+          s += flower5(x, yy, 7 + rnd() * 3, col, col === BK ? RD : YL);
+        }
+        if (g) {
+          s += R(0, 82, 90, 58, BK) + Pt("M0 82 Q45 72 90 82 V92 Q45 82 0 92Z", RD, BK, 1);
+          for (let i = 0; i < 8; i++) s += Pt(`M${4 + i * 11} 98 l5 6 l5 -6`, "none", YL, 2);
+          s += R(0, 110, 90, 6, RD) + gwangMark(14, 126);
+        }
         break;
-      case 11: // 오동: 큰 검은 잎, 꽃대, 광은 봉황, 쌍피는 노란 바닥
-        if (c.ssang) s += R(0, 84, 100, 44, YEL) + Pt("M0 84 Q50 74 100 84", "none", O, 1.2);
-        s += Pt("M20 30 Q4 18 8 6 Q22 2 30 16 Q34 0 50 2 Q62 6 56 22 Q72 10 84 16 Q94 30 76 38 Q56 44 40 40 Q26 44 20 30Z", BLACK);
-        s += Pt("M50 40 L50 70", "none", BLACK, 3) + E(50, 54, 6, 12, PURP, 0, ol) + C(50, 44, 4, YEL, ol);
-        if (g) s += `<g transform="translate(48 94)">` + E(0, 0, 18, 10, RED, -10, ol) + C(16, -12, 6, "#2f8f5b", ol) + Pt("M20 -14 L28 -12 L20 -9Z", YEL, O, .8) +
-                    Pt("M-14 -2 Q-36 -20 -44 4 Q-30 0 -16 6Z", "#2f8f5b", O, 1) + Pt("M-14 4 Q-34 14 -42 30 Q-22 20 -10 10Z", YEL, O, 1) + Pt("M-8 8 Q-14 24 -4 34 Q0 22 0 10Z", "#3c7fd6", O, 1) + `</g>`;
-        else if (!c.ssang) s += Pt("M14 128 Q30 100 50 96 Q70 100 86 128Z", "#3a3a3a");
+      }
+      case 4: { // 흑싸리
+        if (y) {
+          s += `<g transform="translate(48 30) rotate(-15)">` + E(0, 0, 20, 7, RD, 0, ink(1)) + Pt("M-4 -2 Q4 -24 24 -18 Q8 -8 4 0Z", YL, BK, 1) + Pt("M-4 2 Q2 18 20 18 Q8 8 2 2Z", RD, BK, 1) +
+                    C(19, -2, 5.5, RD, ink(1)) + Pt("M24 -2 L32 0", "none", BK, 2) + Pt("M-18 0 L-30 -6 L-28 5Z", BK) + C(20, -3, 1, BK) + `</g>`;
+        }
+        const top = y ? 56 : 30;
+        for (const x of [10, 26, 42, 58, 74, 86]) s += leafStrand(x, top, 140 - top - 4, BK, rnd, rnd() < 0.5);
         break;
-      case 12: // 비: 버드나무, 비광은 우산 쓴 선비와 개구리, 열끗은 제비, 쌍피는 천둥
+      }
+      case 5: { // 난초(창포)
+        for (const [x, h, l] of [[4, 70, 8], [18, 84, -6], [30, 64, 10], [48, 78, -8], [62, 70, 6], [76, 86, -4]]) s += sword(x, 140, h, l);
+        for (const [x, yy, k] of [[20, 58, 1.2], [46, 44, 1.3], [70, 60, 1.2]]) s += iris(x, yy, k);
+        if (y) {
+          s += Pt("M0 112 L36 92 L52 104 L90 84 L90 98 L52 118 L36 106 L0 126Z", YL, BK, 1.4);
+          s += Pt("M10 106 L10 120 M26 98 L26 112 M64 98 L64 112 M80 90 L80 104", "none", BK, 1.2);
+        }
+        break;
+      }
+      case 6: { // 모란
+        s += Pt("M6 70 Q20 54 30 62 Q22 76 6 70Z", BK) + Pt("M84 80 Q70 64 60 72 Q68 86 84 80Z", BK) + Pt("M30 120 Q40 104 52 112 Q44 126 30 120Z", BK);
+        s += peony(28, 92, 18, RD) + peony(62, 104, 16, t ? RD : WH) + peony(64, 62, 13, RD);
+        if (y) for (const [x, yy] of [[22, 26], [64, 20]]) s += E(x - 7, yy, 7, 10, YL, -25, ink(1)) + E(x + 7, yy, 7, 10, YL, 25, ink(1)) +
+                    E(x - 5, yy + 11, 4, 6, YL, 20, ink(1)) + E(x + 5, yy + 11, 4, 6, YL, -20, ink(1)) + E(x, yy + 4, 1.8, 10, BK) + C(x - 7, yy - 2, 2, BK) + C(x + 7, yy - 2, 2, BK);
+        break;
+      }
+      case 7: { // 홍싸리
+        for (const x of [8, 20, 32, 44, 56, 68, 80]) s += clover(x, 140, y ? 50 + rnd() * 20 : 60 + rnd() * 30, rnd);
+        if (y) s += `<g transform="translate(46 54)">` + E(0, 0, 26, 13, YL, -8, ink(1.3)) + E(24, -4, 11, 9, YL, 10, ink(1.3)) +
+                    Pt("M-18 -8 L-14 6 M-8 -11 L-4 8 M2 -12 L5 9 M12 -11 L14 7", "none", BK, 2) + C(28, -7, 1.6, BK) + Pt("M34 -2 L40 2", "none", WH, 2.5) +
+                    Pt("M-16 10 L-24 24 M-6 12 L-8 26 M10 11 L16 24 M18 9 L26 20", "none", BK, 3) + Pt("M-26 -2 Q-34 -8 -32 4", "none", BK, 2) + `</g>`;
+        break;
+      }
+      case 8: { // 공산
+        if (g) s += R(0, 0, 90, 140, RD) + C(45, 44, 25, WH, ink(1.4));
+        s += hill(70);
+        if (y) for (const [x, yy] of [[22, 30], [46, 18], [68, 34]]) s += `<g transform="translate(${x} ${yy})">` + E(0, 0, 9, 4, RD, -10, ink(1)) + Pt("M-4 -2 L-10 -12 L4 -4Z", RD, BK, 1) + Pt("M-2 2 L-10 10 L4 3Z", YL, BK, 1) + C(8, -2, 3, RD, ink(.8)) + Pt("M11 -2 L15 -1", "none", YL, 1.5) + `</g>`;
+        if (g) s += gwangMark(74, 128);
+        break;
+      }
+      case 9: { // 국화
+        if (!y) s += Pt("M0 140 V110 Q20 96 45 108 Q70 96 90 110 V140Z", BK);
+        s += mum(30, 48, 22, YL, RD) + mum(64, 76, 20, RD, YL);
+        s += Pt("M30 70 L34 108 M64 96 L60 116", "none", BK, 2.5) + E(18, 92, 10, 4, BK, -30) + E(76, 104, 10, 4, BK, 30);
+        if (y) s += Pt("M0 112 Q45 100 90 112 V140 H0Z", BL, BK, 1) + Pt("M22 102 L68 102 L60 126 L30 126Z", RD, BK, 1.4) + E(45, 102, 23, 6, "#f04a3a", 0, ink(1)) + R(38, 126, 14, 6, RD, ink(1)) + T(45, 120, "壽", 13, YL);
+        break;
+      }
+      case 10: { // 단풍
+        const cols = [RD, BK, YL, RD, YL, BK, RD];
+        let i = 0;
+        for (const [x, yy, r] of [[14, 16, 12], [40, 12, 11], [68, 18, 12], [26, 40, 11], [56, 42, 12], [80, 46, 10], [12, 70, 11], [40, 72, 12], [70, 76, 11], [24, 104, 11], [60, 110, 12], [84, 104, 10], [44, 130, 10]])
+          if (!y || yy < 70 || x > 70) s += maple(x, yy, r, cols[i++ % cols.length]);
+        if (y) s += `<g transform="translate(38 108)">` + E(0, 0, 22, 11, YL, 0, ink(1.3)) + E(18, -18, 7, 10, YL, -20, ink(1.3)) + C(20, -20, 1.5, BK) +
+                    Pt("M16 -28 L10 -42 M12 -36 L4 -38 M22 -28 L28 -42 M26 -36 L34 -38", "none", BK, 2) +
+                    Pt("M-14 9 L-16 30 M-6 10 L-6 30 M8 10 L10 30 M16 8 L18 30", "none", BK, 3) +
+                    C(-8, -3, 2, BK) + C(2, 2, 2, BK) + C(-14, 3, 1.6, BK) + C(10, -4, 1.6, BK) + `</g>`;
+        break;
+      }
+      case 11: { // 오동
+        const bottom = g ? YL : c.ssang ? RD : null;
+        if (bottom) s += R(0, 104, 90, 36, bottom);
+        s += Pt("M4 104 Q2 84 18 82 Q20 70 34 74 Q44 64 56 74 Q70 70 72 82 Q88 84 86 104 Q66 96 45 104 Q24 96 4 104Z", BK);
+        s += Pt("M45 76 L45 30", "none", BK, 2.5);
+        for (let yy = 30; yy < 72; yy += 8) s += E(40, yy, 4, 3, BL, -20, ink(.6)) + E(50, yy + 4, 4, 3, BL, 20, ink(.6));
+        if (g) s += `<g transform="translate(44 26)">` + C(0, 0, 8, RD, ink(1.2)) + Pt("M6 -2 L14 0 L6 3Z", YL, BK, .8) + C(2, -2, 1.4, BK) +
+                    Pt("M-4 6 Q-30 20 -40 60 Q-20 40 -2 14Z", YL, BK, 1) + Pt("M2 8 Q10 36 2 70 Q16 40 10 10Z", RD, BK, 1) + Pt("M-2 8 Q-14 40 -26 74 Q-6 46 4 12Z", BL, BK, 1) + `</g>` + gwangMark(76, 124);
+        break;
+      }
+      case 12: { // 비
         if (c.ssang) {
-          s += R(0, 0, 100, 128, RED);
-          s += Pt("M10 40 Q30 14 56 26 Q80 36 90 20 L96 50 Q74 64 52 52 Q30 42 16 70Z", BLACK);
-          s += Pt("M24 82 L40 70 L36 86 L56 74 L50 94 L70 82", "none", YEL, 4) + C(70, 104, 14, BLACK) + C(70, 104, 6, RED);
+          s += R(0, 0, 90, 140, RD);
+          s += Pt("M10 0 L20 0 Q10 40 34 80 Q50 110 30 140 L18 140 Q34 108 22 80 Q2 40 10 0Z", BK);
+          s += Pt("M56 0 L80 0 Q70 30 84 60 Q90 74 90 74 V140 L66 140 Q74 96 58 70 Q44 40 56 0Z", BK);
+          for (let i = 0; i < 9; i++) s += Pt(`M${6 + i * 10} 0 L${2 + i * 10} 140`, "none", BK, 0.8, `opacity=".5"`);
           break;
         }
-        for (const x of [14, 32, 70, 88]) s += Pt(`M${x} 0 Q${x + 12} 36 ${x - 4} 84`, "none", GREEN2, 3);
-        for (const x of [14, 32, 70, 88]) for (let yy = 12; yy < 80; yy += 12) s += E(x + 4 + Math.sin(yy / 10) * 3, yy, 2, 5, GREEN, 20);
-        if (g) s += Pt("M0 110 Q30 100 50 112 T100 108 V128 H0Z", BLACK) + Pt("M24 60 Q50 30 76 60Z", YEL, O, 1.4) + Pt("M50 60 L50 96", "none", O, 2.5) +
-                    E(48, 90, 10, 16, RED, 0, ol) + R(40, 96, 16, 12, BLACK) + C(48, 70, 6, "#f2d4b0", ol) + E(82, 106, 7, 5, GREEN2, 0, ol) + C(80, 103, 1.2, O);
-        if (c.kind === "yeol") s += `<g transform="translate(50 92)">` + E(0, 0, 15, 6, BLACK, -10) + Pt("M-12 1 L-30 -10 M-12 2 L-30 10", "none", BLACK, 3) +
-                    Pt("M-4 -4 Q6 -26 20 -14 Q8 -6 4 -1Z", BLACK) + C(14, -4, 5.5, BLACK) + E(6, 3, 7, 2.8, RED, -10) + `</g>`;
-        if (c.kind === "tti") s += Pt("M0 114 Q30 106 50 116 T100 112 V128 H0Z", BLACK);
+        s += Pt("M0 0 Q14 30 6 70 M20 0 Q32 34 22 78 M70 0 Q56 34 66 80 M86 0 Q74 30 84 64", "none", BK, 2.2);
+        for (const [x0, x1] of [[6, 16], [22, 34], [66, 56], [84, 74]]) for (let yy = 8; yy < 70; yy += 10) s += E(x0 + (x1 - x0) * (yy / 70), yy, 2.2, 6, BK, x1 > x0 ? 20 : -20);
+        if (g) {
+          s += Pt("M0 118 Q20 108 40 118 T90 114 V140 H0Z", BL, BK, 1) + Pt("M0 126 Q22 118 44 128 T90 124", "none", WH, 1.4);
+          s += Pt("M20 62 Q45 36 70 62Z", BK) + Pt("M45 62 L45 98", "none", BK, 2.5);
+          s += Pt("M34 76 Q45 70 56 76 L58 110 L32 110Z", RD, BK, 1.2) + C(45, 70, 6, "#f6d7b3", ink(1)) + R(36, 108, 18, 6, BK) + Pt("M50 82 L62 92", "none", BK, 2);
+          s += E(74, 110, 7, 5, YL, 0, ink(1)) + C(72, 107, 1.2, BK) + gwangMark(12, 12);
+        }
+        if (y) s += `<g transform="translate(48 96) rotate(-10)">` + E(0, 0, 16, 6, YL, 0, ink(1)) + Pt("M-12 1 L-30 -10 M-12 2 L-30 10", "none", BK, 2.5) +
+                    Pt("M-4 -4 Q6 -26 22 -14 Q8 -6 4 -1Z", BK) + C(14, -4, 5.5, RD, ink(1)) + E(4, 3, 8, 3, RD) + C(15, -5, 1, WH) + `</g>`;
+        if (t) s += Pt("M0 120 Q30 110 60 122 T90 118 V140 H0Z", BK);
         break;
+      }
     }
-    if (c.kind === "tti") s += ribbon(c.rib);
+    if (t) s += ribbon(c.rib);
     return s;
   }
 
@@ -406,18 +474,19 @@
   function faceSVG(c) {
     if (svgCache.has(c.id)) return svgCache.get(c.id);
     const lab = label(c);
-    const labCol = c.kind === "gwang" ? RED : c.kind === "tti" ? (c.rib === "cheong" ? BLUE : RED) : c.kind === "pi" && !c.ssang ? "#555" : O;
-    const mirror = c.kind === "pi" && c.alt ? `transform="translate(100 0) scale(-1 1)"` : "";
+    const labCol = c.kind === "gwang" ? RD : c.kind === "tti" ? (c.rib === "cheong" ? BL : RD) : BK;
+    const mirror = c.kind === "pi" && c.alt ? `transform="translate(90 0) scale(-1 1)"` : "";
     let s = `<svg viewBox="0 0 100 150" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">`;
-    s += R(0, 0, 100, 150, WHITE);
-    s += `<svg x="3" y="3" width="94" height="120" viewBox="0 0 100 128" preserveAspectRatio="none"><g ${mirror}>${art(c)}</g></svg>`;
-    s += R(3, 3, 94, 120, "none", `stroke="${O}" stroke-width="1.2"`);
+    s += `<rect x="0" y="0" width="100" height="150" rx="6" fill="${RD}"/>`;
+    s += `<svg x="5" y="5" width="90" height="140" viewBox="0 0 90 140"><rect width="90" height="140" fill="${WH}"/><g ${mirror}>${art(c)}</g></svg>`;
+    s += `<rect x="5" y="5" width="90" height="140" fill="none" stroke="${BK}" stroke-width=".8"/>`;
+    // 읽기 도움: 월 숫자와 패 종류 (끌 수 있음)
     const nm = String(c.m), wide = nm.length > 1;
-    s += `<rect x="5" y="5" width="${wide ? 26 : 20}" height="20" rx="5" fill="${WHITE}" stroke="${O}" stroke-width="1.2"/>` + T(wide ? 18 : 15, 20.5, nm, 16, O);
-    if (c.kind === "gwang") s += C(84, 16, 11, RED, `stroke="${WHITE}" stroke-width="2"`) + T(84, 21, "光", 14, WHITE);
-    if (c.ssang) s += C(84, 16, 11, O, `stroke="${WHITE}" stroke-width="2"`) + T(84, 21.5, "2", 15, WHITE);
-    s += T(50, 143, lab, lab.length >= 3 ? 19 : 22, labCol);
-    s += R(0.75, 0.75, 98.5, 148.5, "none", `rx="8" stroke="#2a2a2a" stroke-width="1.5"`) + `</svg>`;
+    s += `<g class="aid"><rect x="7" y="7" width="${wide ? 24 : 18}" height="18" rx="9" fill="${WH}" stroke="${BK}" stroke-width="1.2"/>` + T(wide ? 19 : 16, 21, nm, 14, BK);
+    const lw = lab.length * 15 + 12;
+    s += `<rect x="${50 - lw / 2}" y="127" width="${lw}" height="19" rx="9.5" fill="${WH}" stroke="${BK}" stroke-width="1"/>` + T(50, 141.5, lab, 14, labCol) + `</g>`;
+    if (c.ssang) s += C(85, 16, 8.5, BK, `stroke="${WH}" stroke-width="1.6"`) + T(85, 20.5, "2", 12, WH);
+    s += `</svg>`;
     svgCache.set(c.id, s);
     return s;
   }
@@ -523,13 +592,20 @@
     // 패를 담요에 내리치는 "착!": 날카로운 딱 + 종이 몸통 + 담요 쿵
     slap(power = 1) {
       const k = rand(0.9, 1.1);
-      burst("highpass", 3200 * k, 0.7, 0.025, 0.55 * power);
-      burst("bandpass", 1100 * k, 1.1, 0.07, 0.65 * power);
-      tone(150 * k, 0.11, "sine", 0.32 * power, 0, 55);
+      burst("highpass", 5200 * k, 0.7, 0.012, 0.5 * power);           // 모서리가 먼저 닿는 딱
+      burst("highpass", 3000 * k, 0.7, 0.03, 0.6 * power, 0.012);     // 면이 붙는 짝
+      burst("bandpass", 1050 * k, 1.1, 0.08, 0.7 * power, 0.01);      // 종이 몸통
+      tone(140 * k, 0.13, "sine", 0.38 * power, 0.008, 50);            // 담요 쿵
     },
+    whoosh(dur = 0.2) { burst("bandpass", 400, 0.9, dur, 0.2, 0, 2200); },   // 내리꽂기 전 바람 가르는 소리
     flip() { burst("highpass", 2400, 0.8, 0.05, 0.25); tone(900, 0.03, "triangle", 0.05); },
     // 가져오기 "촥": 쓸어 담는 소리 + 맑은 똑
-    take() { burst("bandpass", 2600, 0.9, 0.16, 0.28, 0, 700); tone(1320, 0.07, "triangle", 0.07, 0.12); tone(1760, 0.09, "triangle", 0.05, 0.17); },
+    take() {   // 촥촥: 두 번 쓸어 담고 맑은 똑
+      burst("bandpass", 2800, 0.9, 0.12, 0.3, 0, 800); burst("bandpass", 2400, 0.9, 0.12, 0.26, 0.09, 700);
+      tone(1320, 0.07, "triangle", 0.07, 0.2); tone(1760, 0.09, "triangle", 0.05, 0.25);
+    },
+    pluck() { tone(600, 0.12, "sine", 0.16, 0, 1500); burst("highpass", 3000, 0.8, 0.03, 0.2, 0.05); },   // 피 뺏기 쏙
+    ding() { tone(1568, 0.25, "sine", 0.12); tone(2093, 0.35, "sine", 0.1, 0.12); },
     shuffle() { for (let i = 0; i < 22; i++) burst("highpass", 2600 + rand(-400, 400), 0.8, 0.018, 0.22, i * 0.028); },
     event() { [784, 988, 1175].forEach((f, i) => tone(f, 0.12, "square", 0.05, i * 0.07)); },
     go() { tone(220, 0.08, "sine", 0.4, 0, 70); tone(392, 0.32, "sawtooth", 0.07, 0.05, 784); },
@@ -542,12 +618,14 @@
   // 기기에 들어 있는 한국어 음성으로, 높고 발랄하게 말한다.
   // 기계 음성은 문장을 말하면 억양이 어색하다. 짧은 감탄사와 낱말로만.
   const LINES = {
-    bomb: ["폭탄!", "펑!"], shake: ["흔들어!"], jjok: ["쪽!"], ppuk: ["쌌다!", "뻑!"],
-    ttadak: ["따닥!"], sweep: ["싹쓸이!"], eatppuk: ["냠!"], jappuk: ["자뻑!"],
+    bomb: ["폭탄!", "펑!", "쾅!"], shake: ["흔들어!", "흔들흔들!"], jjok: ["쪽!", "쪽쪽!"], ppuk: ["쌌다!", "뻑!", "앗, 쌌다!"],
+    ttadak: ["따닥!"], sweep: ["싹쓸이!", "싹!"], eatppuk: ["냠!", "꿀꺽!"], jappuk: ["자뻑!"],
+    gwang1: ["광!", "광이다!"], ssang: ["쌍피!"], steal: ["뺏었다!", "이리 와!"], stolen: ["내 피!", "앗!"],
+    seven: ["났다!", "칠 점!"], start: ["시작!", "자, 간다!"], ask: ["고? 스톱?"],
     godori: ["고도리!"], hong: ["홍단!"], cheong: ["청단!"], cho: ["초단!"],
     gwang3: ["삼광!"], gwang4: ["사광!"], gwang5: ["오광!"],
     stop: ["스톱!"], pibak: ["피박!"], gwangbak: ["광박!"], meongtta: ["멍따!"], gobak: ["고박!"],
-    nagari: ["나가리!"], win: ["앗싸!", "아싸!"], lose: ["아이고!", "에구!"], on: ["짠!"],
+    nagari: ["나가리!"], win: ["앗싸!", "아싸!", "이겼다!"], lose: ["아이고!", "에구!", "아깝다!"], on: ["짠!"],
   };
   const GO_WORD = ["", "고!", "투고!", "쓰리고!", "포고!", "파이브고!", "식스고!", "세븐고!"];
   let voice = null;
@@ -668,6 +746,7 @@
   const four = arr => { const n = {}; for (const c of arr) if (++n[c.m] === 4) return true; return false; };
 
   async function newRound(starter = ME, carry = 0) {
+    for (const c of CARDS) c.rot = null;
     let deck, me, cpu, floor;
     do {
       deck = shuffle(CARDS.slice());
@@ -686,6 +765,7 @@
     fit();
     await sleep(MOVE + 120);
     sfx.slap(0.7);
+    speak("start");
     G.busy = false;
     render();
     status(starter === ME ? "내 차례입니다. 낼 패를 누르세요." : "컴퓨터 차례입니다.");
@@ -695,6 +775,7 @@
 
   const floorOf = m => G.floor.filter(c => c.m === m);
   function capture(who, cards) {
+    for (const c of cards) c.rot = null;
     G.floor = G.floor.filter(c => !cards.includes(c));
     G.caps[who].push(...cards);
     for (const c of cards) if (!G.floor.some(f => f.m === c.m)) delete G.ppuk[c.m];
@@ -718,17 +799,23 @@
   }
 
   // 패 하나를 바닥에 내려놓는 한 박자: 날아가서 → 닿는 순간 착! → 잠깐 쉼
-  async function land(card, power = 1) {
+  // 패 내기: 손에서 들어 올려 → 비스듬히 높이 → 내리꽂아 착! → 살짝 튐
+  let SLAM = 560;
+  const slamIds = new Set();
+  async function land(cards, power = 1) {
+    cards = [].concat(cards);
+    for (const c of cards) { slamIds.add(c.id); if (c.rot == null) c.rot = rand(-7, 7); }
     render();
-    await sleep(MOVE);
-    sfx.slap(power); buzz(14);
-    bump(card);
-    await sleep(Math.max(120, D - MOVE));
+    setTimeout(() => sfx.whoosh(SLAM * 0.0004), SLAM * 0.3);
+    await sleep(SLAM * 0.8);
+    sfx.slap(power); buzz(16);
+    bump(cards[0]);
+    await sleep(Math.max(140, D - SLAM * 0.5));
   }
   async function sweep() {
     render();
     sfx.take(); buzz([8, 30, 8]);
-    await sleep(MOVE + 140);
+    await sleep(MOVE + 160);
   }
 
   // 이번 턴에 새로 완성된 족보: 고도리·홍단·청단·초단, 광 3·4·5장
@@ -744,6 +831,7 @@
     G.busy = true;
     const events = [];
     const scoreBefore = score(G.caps[who]);
+    const capsBefore = G.caps[who].length;
     let stealN = 0, pendA = null, placedA = false, aCount = 0;
 
     if (A && bomb) {
@@ -751,7 +839,7 @@
       three.forEach(c => removeFromHand(who, c));
       G.floor.push(...three);
       G.shakes[who]++;
-      await land(A, 1.4);
+      await land(three, 1.5);
       capture(who, floorOf(A.m));
       stealN++; events.push(["폭탄!", "점수 2배 · 피 한 장", "bomb"]);
       await sweep();
@@ -799,10 +887,17 @@
     if (G.floor.length === 0 && G.deck.length > 0) { stealN++; events.push(["싹쓸이!", "피 한 장", "sweep"]); }
     const got = stealN ? steal(who, stealN) : 0;
     events.push(...newSets(scoreBefore, score(G.caps[who])));
+    const taken = G.caps[who].slice(capsBefore);
     await sweep();
-    events.forEach(([big, small, key], i) => {
+    if (got) setTimeout(sfx.pluck, 160);
+    // 목소리는 한 턴에 두 마디까지: 큰 사건 → 족보 → 광·쌍피 → 피 뺏기
+    const voices = events.map(e => e[2]);
+    if (!events.some(e => /^gwang\d/.test(e[2])) && taken.some(c => c.kind === "gwang")) voices.push("gwang1");
+    if (taken.some(c => c.ssang)) voices.push("ssang");
+    if (got) voices.push(who === ME ? "steal" : "stolen");
+    voices.slice(0, 2).forEach((k, i) => setTimeout(() => speak(k), i * 50));
+    events.forEach(([big, small]) => {
       sfx.event();
-      if (i < 2) speak(key);            // 한 턴에 두 마디까지만
       toast(big, small ? (who === ME ? small : "컴퓨터 · " + small) : (who === ME ? "" : "컴퓨터"));
     });
     if (got && who === CPU) toast("피를 뺏겼습니다", `${got}장`);
@@ -813,6 +908,7 @@
   async function afterTurn(who) {
     const s = score(G.caps[who]).total;
     if (s >= 7 && s > G.goBase[who]) {
+      if (!G.goBase[who] && !G.go[who]) { sfx.ding(); speak("seven"); await sleep(500); }
       if (!G.deck.length) return endRound(who);
       const go = who === ME ? await askGo(s) : cpuGo();
       if (!go) { speak("stop"); return endRound(who); }
@@ -955,10 +1051,11 @@
   function status(t) { $("#status").textContent = t; }
 
   // 자리만 옮기고, 옮겨진 카드는 이전 자리에서 미끄러져 오게 (FLIP)
-  function place(container, cards, faceUp) {
+  function place(container, cards, faceUp, tilt = false) {
     for (const c of cards) {
       const e = EL.get(c.id);
       e.classList.toggle("down", !faceUp);
+      e.style.rotate = tilt && c.rot != null ? c.rot.toFixed(1) + "deg" : "";   // 바닥 패는 실제처럼 조금씩 삐뚤게
       if (e.parentElement !== container || e.nextSibling) container.appendChild(e);
     }
   }
@@ -1018,7 +1115,7 @@
       let tag = grp.querySelector(".tag");
       if (G.ppuk[m] && !tag) { tag = document.createElement("span"); tag.className = "tag"; tag.textContent = "뻑"; grp.prepend(tag); }
       if (!G.ppuk[m] && tag) tag.remove();
-      place(grp, G.floor.filter(x => x.m === m), true);
+      place(grp, G.floor.filter(x => x.m === m), true, true);
     }
 
     $("#me-pts").textContent = score(G.caps.me).total;
@@ -1047,8 +1144,23 @@
       const r1 = e.getBoundingClientRect();
       const dx = r0.left - r1.left, dy = r0.top - r1.top, sc = r0.width / r1.width;
       if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sc - 1) < 0.02) continue;
-      const lift = Math.min(40, Math.hypot(dx, dy) * 0.12);
       e.style.zIndex = 30;
+      if (slamIds.has(id)) {
+        // 내리꽂기: 높이 들어 올려 비틀고, 가속하며 떨어져 살짝 눌렸다 튄다
+        const lift = clamp(Math.hypot(dx, dy) * 0.18, 36, 90), tw = rand(8, 14) * (Math.random() < 0.5 ? -1 : 1);
+        e.classList.add("air");
+        const a = e.animate([
+          { transform: `translate(${dx}px, ${dy}px) scale(${sc})` },
+          { transform: `translate(${dx * 0.6}px, ${dy * 0.6 - lift}px) scale(${Math.max(sc, 1) * 1.32}) rotate(${tw}deg)`, offset: 0.42, easing: "cubic-bezier(.55,0,.95,.55)" },
+          { transform: `translate(0px, 0px) scale(.93) rotate(${-tw * 0.15}deg)`, offset: 0.8 },
+          { transform: "translate(0px, -2px) scale(1.035)", offset: 0.9 },
+          { transform: "none" },
+        ], { duration: SLAM, easing: "cubic-bezier(.3,.6,.3,1)" });
+        setTimeout(() => e.classList.remove("air"), SLAM * 0.8);
+        a.onfinish = a.oncancel = () => { e.style.zIndex = ""; e.classList.remove("air"); };
+        continue;
+      }
+      const lift = Math.min(40, Math.hypot(dx, dy) * 0.12);
       const a = e.animate([
         { transform: `translate(${dx}px, ${dy}px) scale(${sc})` },
         { transform: `translate(${dx * 0.45}px, ${dy * 0.45 - lift}px) scale(${(sc + 1) / 2 * 1.12})`, offset: 0.5 },
@@ -1056,6 +1168,7 @@
       ], { duration: MOVE, easing: "cubic-bezier(.25,.75,.3,1)" });
       a.onfinish = a.oncancel = () => { e.style.zIndex = ""; };
     }
+    slamIds.clear();
   }
 
   // 바닥에 닿는 순간: 묶음이 살짝 눌렸다 튀고, 먼지가 인다
@@ -1108,8 +1221,12 @@
         <li>패를 다 쳐도 아무도 스톱하지 못하면 <b>나가리</b>. 다음 판 점수가 2배가 됩니다.</li>
       </ul>
       <p class="small">전적 ${stats.w}승 ${stats.l}패 · 누적 ${stats.pts >= 0 ? "+" : ""}${stats.pts}점 · <a href="../">게임 목록</a></p>
-      <div class="row"><button class="big dark" type="button">닫기</button></div>`;
-    el.querySelector("button").onclick = () => done();
+      <div class="row"><button class="big" type="button" id="aid-btn"></button><button class="big dark" type="button">닫기</button></div>`;
+    const ab = el.querySelector("#aid-btn");
+    const syncAid = () => { ab.textContent = document.body.classList.contains("no-aid") ? "숫자·글자 보이기" : "숫자·글자 숨기기"; };
+    syncAid();
+    ab.onclick = () => { document.body.classList.toggle("no-aid"); store.set("yangmatgo.aid", document.body.classList.contains("no-aid") ? "off" : "on"); syncAid(); };
+    el.querySelectorAll("button")[1].onclick = () => done();
   });
   // 첫 터치 때 소리·목소리를 깨운다 (아이폰은 사용자가 누르기 전엔 소리를 막는다)
   let woke = false;
@@ -1120,8 +1237,9 @@
   }, { capture: true });
 
   // 테스트용 훅
-  window.__matgo = { get G() { return G; }, setDelay(ms) { D = ms; MOVE = Math.min(MOVE, Math.max(30, ms * 0.6)); }, score, CARDS, fit };
+  window.__matgo = { faceSVG, get G() { return G; }, setDelay(ms) { D = ms; MOVE = Math.min(MOVE, Math.max(30, ms * 0.6)); SLAM = Math.min(SLAM, Math.max(40, ms * 0.9)); }, score, CARDS, fit };
 
+  if (store.get("yangmatgo.aid") === "off") document.body.classList.add("no-aid");
   buildCards();
   fit();
   newRound(ME, 0);
