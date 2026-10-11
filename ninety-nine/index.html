@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>99 · 레지스터 오버플로</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Orbitron:wght@700;900&display=swap">
+<style>
+  /* 칩 속 회로 기판 위의 카드 대결. 가운데는 누산기(ACC) 레지스터, 위는 CPU, 아래는 내 손패 */
+  :root {
+    color-scheme: dark;
+    --bg: #04110c; --board: #0a2219; --trace: #12402f; --ink: #e6fff4; --dim: #7fb3a0;
+    --zero: #5dffc3; --amber: #ffb547; --hot: #ff4b4b; --gold: #d9b45a; --chip: #10171a;
+    --cw: min(98px, calc((100vw - 150px) / 3));
+    --display: "Black Han Sans", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    --digit: "Orbitron", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    overflow: hidden; -webkit-user-select: none; user-select: none; touch-action: manipulation;
+  }
+  #app {
+    position: relative; height: 100%; max-width: 560px; margin: 0 auto;
+    display: grid; grid-template-rows: auto auto 1fr auto auto; gap: 10px;
+    padding: calc(10px + env(safe-area-inset-top, 0px)) 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    background:
+      radial-gradient(ellipse at 50% 45%, rgba(93,255,195,.08), transparent 60%),
+      linear-gradient(var(--trace) 1px, transparent 1px) 0 0 / 28px 28px,
+      linear-gradient(90deg, var(--trace) 1px, transparent 1px) 0 0 / 28px 28px,
+      var(--board);
+    background-blend-mode: normal, soft-light, soft-light, normal;
+  }
+  header { display: flex; align-items: center; gap: 8px; }
+  header h1 { margin: 0 auto 0 0; font-family: var(--digit); font-weight: 900; font-size: 30px; color: var(--zero); letter-spacing: .04em; text-shadow: 0 0 12px rgba(93,255,195,.5); }
+  .btn {
+    font: 700 16px/1 inherit; color: var(--ink); background: rgba(0,0,0,.45);
+    border: 2px solid var(--trace); border-radius: 12px; padding: 10px 12px; cursor: pointer;
+  }
+  .btn:focus-visible { outline: 3px solid var(--zero); outline-offset: 2px; }
+
+  /* 상대 CPU */
+  .side { display: flex; align-items: center; gap: 12px; min-height: 92px; }
+  .who { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 74px; flex: none; }
+  .who b { font-family: var(--display); font-weight: 400; font-size: 18px; }
+  .cpu-face { width: 64px; height: 64px; border-radius: 10px; background: var(--chip); position: relative;
+    box-shadow: inset 0 0 0 2px #2a3a3e, 0 0 0 3px var(--board); }
+  .cpu-face::before, .cpu-face::after { content: ""; position: absolute; left: -7px; right: -7px; top: 8px; bottom: 8px;
+    background: repeating-linear-gradient(transparent 0 5px, var(--gold) 5px 8px); z-index: -1; border-radius: 2px; }
+  .cpu-face::after { left: 8px; right: 8px; top: -7px; bottom: -7px; background: repeating-linear-gradient(90deg, transparent 0 5px, var(--gold) 5px 8px); }
+  .eye { position: absolute; top: 22px; width: 12px; height: 12px; border-radius: 3px; background: var(--hot); box-shadow: 0 0 10px var(--hot); transition: height .12s; }
+  .eye.l { left: 14px; } .eye.r { right: 14px; }
+  .cpu-face.think .eye { animation: scan .5s steps(2) infinite; }
+  @keyframes scan { 50% { background: var(--amber); box-shadow: 0 0 10px var(--amber); } }
+  .mouth { position: absolute; left: 18px; right: 18px; bottom: 14px; height: 4px; border-radius: 2px; background: #55666a; }
+  .zero-face { width: 52px; height: 64px; border-radius: 50%; border: 6px solid var(--zero); box-shadow: 0 0 14px rgba(93,255,195,.45); position: relative; }
+  .zero-face::before, .zero-face::after { content: ""; position: absolute; top: 20px; width: 4px; height: 10px; background: var(--ink); border-radius: 2px; }
+  .zero-face::before { left: 13px; } .zero-face::after { right: 13px; }
+  .hand { display: flex; gap: 10px; justify-content: center; flex: 1; }
+  .cpu-hand .card { width: 56px; height: 80px; }
+
+  /* 가운데: 누산기 */
+  .center { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; min-height: 0; }
+  .stack { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 14px; color: var(--dim); }
+  .slot { width: 74px; height: 104px; border-radius: 10px; border: 2px dashed var(--trace); position: relative; }
+  .slot .card { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .reg { text-align: center; padding: 12px 6px 14px; border-radius: 16px; background: #020806; border: 2px solid #18493a; position: relative; overflow: hidden; }
+  .reg .lab { font: 900 12px var(--digit); letter-spacing: .3em; color: var(--dim); }
+  .reg svg { display: block; width: 100%; max-width: 230px; height: auto; margin: 4px auto 6px; }
+  .heat { height: 10px; border-radius: 5px; background: #0d2a20; overflow: hidden; margin: 0 10px; }
+  .heat i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--zero), var(--amber) 70%, var(--hot)); transition: width .35s; }
+  .reg.hot { animation: hot 0.9s ease-in-out infinite; }
+  @keyframes hot { 50% { box-shadow: 0 0 24px rgba(255,75,75,.55), inset 0 0 18px rgba(255,75,75,.25); } }
+  .reg.bump { animation: bump .25s; }
+  @keyframes bump { 40% { transform: scale(1.05); } }
+  .msg { min-height: 28px; text-align: center; font-family: var(--display); font-size: 20px; color: var(--ink); }
+  .msg.mine { color: var(--zero); } .msg.cpu { color: var(--amber); }
+
+  /* 카드: 칩 모양. 양옆 금빛 다리, 가운데 숫자, 아래 효과 */
+  .card {
+    position: relative; width: var(--cw); height: calc(var(--cw) * 1.43); border-radius: 10px; flex: none;
+    background: linear-gradient(160deg, #15302a, #0b1a16 70%); border: 2px solid #2d6150;
+    box-shadow: 0 6px 14px rgba(0,0,0,.5); color: var(--ink); cursor: default;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    transition: transform .15s, box-shadow .15s, opacity .2s;
+  }
+  .card::before, .card::after { content: ""; position: absolute; top: 14px; bottom: 14px; width: 5px;
+    background: repeating-linear-gradient(transparent 0 6px, var(--gold) 6px 10px); }
+  .card::before { left: -6px; } .card::after { right: -6px; }
+  .card .suit { position: absolute; top: 6px; left: 8px; font-size: 18px; line-height: 1; }
+  .card .suit.r { color: #ff6a6a; } .card .suit.b { color: #b8d9ff; }
+  .card .rank { font: 900 calc(var(--cw) * 0.45)/1 var(--digit); color: var(--zero); text-shadow: 0 0 10px rgba(93,255,195,.45); }
+  .card .fx { font: 700 15px/1.1 inherit; color: var(--ink); background: rgba(0,0,0,.45); padding: 3px 7px; border-radius: 6px; }
+  .card.sp .rank { color: var(--amber); text-shadow: 0 0 10px rgba(255,181,71,.5); }
+  .slot .card .rank { font-size: 30px; } .slot .card .fx { font-size: 11px; padding: 2px 4px; white-space: nowrap; } .slot .card .suit { font-size: 13px; top: 4px; left: 6px; }
+  .card .fx { white-space: nowrap; }
+  .card .to { white-space: nowrap; position: absolute; bottom: -26px; left: 0; right: 0; text-align: center; font: 700 15px var(--digit); color: var(--dim); }
+  .card.back { background: repeating-linear-gradient(45deg, #0e2a22 0 6px, #0b211b 6px 12px); border-color: #24503f; }
+  .card.back::marker { content: none; }
+  .card.back .core { width: 60%; height: 40%; border-radius: 6px; background: var(--chip); box-shadow: inset 0 0 0 2px #2a3a3e; display: flex; align-items: center; justify-content: center; font: 900 14px var(--digit); color: #3b5a52; }
+  .my-hand .card { cursor: pointer; }
+  .my-hand .card.ok:hover, .my-hand .card.ok:focus-visible { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--zero), 0 12px 20px rgba(0,0,0,.5); outline: none; }
+  .my-hand .card.bad { opacity: .45; cursor: not-allowed; }
+  .my-hand .card.bad .to { color: var(--hot); }
+  .my-hand.wait .card { cursor: default; }
+  .my-hand { padding-bottom: 26px; }
+
+  /* 날아가는 카드 */
+  .fly { position: fixed; z-index: 50; margin: 0; pointer-events: none; transition: transform .38s cubic-bezier(.3,.8,.3,1); }
+
+  /* A 고르기 */
+  .ask { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); }
+  .ask .box { background: #0b1f18; border: 2px solid var(--trace); border-radius: 18px; padding: 20px; text-align: center; display: grid; gap: 14px; }
+  .ask .box p { margin: 0; font-family: var(--display); font-size: 22px; }
+  .ask .row { display: flex; gap: 12px; justify-content: center; }
+  .ask button { font: 900 26px var(--digit); padding: 14px 22px; border-radius: 14px; border: 2px solid var(--zero); background: #062a1e; color: var(--zero); cursor: pointer; }
+  .ask button:disabled { opacity: .35; border-color: #444; color: #777; cursor: not-allowed; }
+
+  /* 시작·결과 */
+  .over { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(2,8,6,.82); }
+  .over[hidden] { display: none; }
+  .over .box { max-width: 420px; width: 100%; text-align: center; display: grid; gap: 14px; }
+  .over h2 { margin: 0; font: 900 64px/1 var(--digit); color: var(--zero); text-shadow: 0 0 22px rgba(93,255,195,.5); }
+  .over h2.lose { color: var(--hot); text-shadow: 0 0 22px rgba(255,75,75,.6); }
+  .over .sub { font-family: var(--display); font-size: 22px; }
+  .rules { text-align: left; background: rgba(0,0,0,.4); border: 1px solid var(--trace); border-radius: 14px; padding: 12px 16px; font-size: 16px; line-height: 1.6; }
+  .rules table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .rules td { padding: 3px 4px; border-top: 1px solid #143a2d; }
+  .rules td:first-child { font: 900 16px var(--digit); color: var(--amber); width: 64px; }
+  .big { font: 700 22px var(--display); padding: 14px; border-radius: 16px; border: 0; background: var(--zero); color: #032015; cursor: pointer; }
+  .big:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+
+  /* 오버플로: 화면이 깨진다 */
+  body.crash #app { animation: crash .5s steps(6) 2; }
+  @keyframes crash { 0% { transform: translate(0); filter: none; } 20% { transform: translate(-6px, 3px); filter: hue-rotate(90deg); } 40% { transform: translate(5px, -4px); } 60% { transform: translate(-3px, 5px); filter: hue-rotate(-60deg) saturate(2); } 80% { transform: translate(4px, 0); } 100% { transform: translate(0); filter: none; } }
+  @media (max-height: 700px) { :root { --cw: min(84px, calc((100vw - 150px) / 3)); } .slot { width: 64px; height: 90px; } .cpu-hand .card { width: 46px; height: 66px; } .side { min-height: 74px; } }
+  @media (prefers-reduced-motion: reduce) { .fly { transition: none; } body.crash #app, .reg.hot, .reg.bump { animation: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>99</h1>
+    <button class="btn" id="rulesBtn" type="button">규칙</button>
+    <button class="btn" id="snd" type="button">소리 켬</button>
+    <button class="btn" id="newBtn" type="button">새 판</button>
+  </header>
+
+  <section class="side" aria-label="CPU">
+    <div class="who"><div class="cpu-face" id="cpuFace"><i class="eye l"></i><i class="eye r"></i><i class="mouth"></i></div><b>CPU</b></div>
+    <div class="hand cpu-hand" id="cpuHand"></div>
+  </section>
+
+  <section class="center" aria-label="판">
+    <div class="stack"><div class="slot" id="deck"></div><span id="deckN">52장</span></div>
+    <div class="reg" id="reg" role="status" aria-live="polite" aria-label="합계">
+      <div class="lab">ACC</div>
+      <svg id="seg" viewBox="0 0 230 150" aria-hidden="true"></svg>
+      <div class="heat"><i id="heat"></i></div>
+    </div>
+    <div class="stack"><div class="slot" id="pile"></div><span>낸 카드</span></div>
+  </section>
+
+  <div class="msg" id="msg"></div>
+
+  <section class="side" aria-label="나">
+    <div class="who"><div class="zero-face"></div><b>나</b></div>
+    <div class="hand my-hand" id="myHand"></div>
+  </section>
+</div>
+
+<div class="over" id="over">
+  <div class="box">
+    <h2 id="overTitle">99</h2>
+    <div class="sub" id="overSub">99를 넘기지 않고 버텨라</div>
+    <div class="rules" id="rulesBox">
+      손패는 3장. 차례마다 1장을 내고 1장을 뽑는다. 낸 카드만큼 합계가 바뀐다.
+      <b>99를 넘기는 카드밖에 없으면 진다.</b>
+      <table>
+        <tr><td>A</td><td>+1 또는 +10 (고른다)</td></tr>
+        <tr><td>2·3 5~8</td><td>숫자만큼 더한다</td></tr>
+        <tr><td>4</td><td>0 · 순서 뒤집기 (둘이 하면 그대로)</td></tr>
+        <tr><td>9</td><td>0 · 그냥 넘긴다</td></tr>
+        <tr><td>10</td><td>−10 (0 밑으로는 안 내려간다)</td></tr>
+        <tr><td>J · Q</td><td>+10</td></tr>
+        <tr><td>K</td><td>합계를 바로 99로</td></tr>
+      </table>
+    </div>
+    <button class="big" id="goBtn" type="button">시작</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const $ = s => document.querySelector(s);
+  const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ================= 소리 =================
+  let soundOn = store.get("nn.sound") !== "off";
+  const sndBtn = $("#snd");
+  const syncSnd = () => { sndBtn.textContent = soundOn ? "소리 켬" : "소리 끔"; };
+  syncSnd();
+  sndBtn.addEventListener("click", () => { soundOn = !soundOn; store.set("nn.sound", soundOn ? "on" : "off"); syncSnd(); if (soundOn) sfx.tick(); });
+  let actx = null, master = null, noiseBuf = null;
+  function audio() {
+    if (!soundOn) return null;
+    try {
+      if (!actx) {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        master = actx.createGain(); master.gain.value = 0.8; master.connect(actx.createDynamicsCompressor()).connect(actx.destination);
+        noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.6, actx.sampleRate);
+        const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      if (actx.state !== "running") actx.resume();
+      return actx;
+    } catch (e) { return null; }
+  }
+  function tone(f, dur, type = "square", vol = 0.05, to = 0, delay = 0) {
+    const a = audio(); if (!a) return;
+    const t0 = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0); if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(master); o.start(t0); o.stop(t0 + dur + 0.03);
+  }
+  function noise(dur, vol = 0.08, hp = 1500, delay = 0) {
+    const a = audio(); if (!a) return;
+    const t0 = a.currentTime + delay, src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = noiseBuf; f.type = "highpass"; f.frequency.value = hp;
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f).connect(g).connect(master); src.start(t0); src.stop(t0 + dur + 0.03);
+  }
+  const sfx = {
+    tick: () => tone(1400, 0.03, "square", 0.03),
+    play: () => { noise(0.06, 0.12, 2500); tone(220, 0.08, "triangle", 0.12, 120); },
+    draw: () => noise(0.12, 0.05, 4000),
+    count: n => tone(600 + n * 9, 0.035, "square", 0.025),
+    max: () => tone(300, 0.4, "sawtooth", 0.05, 1800),
+    minus: () => tone(1200, 0.3, "sawtooth", 0.04, 200),
+    zero: () => { tone(900, 0.06, "square", 0.04); tone(600, 0.08, "square", 0.04, 0, 0.07); },
+    rev: () => [700, 900, 1100, 900].forEach((f, i) => tone(f, 0.05, "square", 0.035, 0, i * 0.05)),
+    crash: () => { noise(0.6, 0.25, 200); [880, 660, 440, 220, 110].forEach((f, i) => tone(f, 0.12, "sawtooth", 0.06, f * 0.6, i * 0.08)); },
+    win: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.14, "square", 0.05, 0, i * 0.09)),
+    warn: () => { tone(1500, 0.05, "square", 0.03); tone(1500, 0.05, "square", 0.03, 0, 0.1); },
+  };
+
+  // ================= 7세그먼트 합계판 =================
+  // 세그먼트: a(위) b(오른위) c(오른아래) d(아래) e(왼아래) f(왼위) g(가운데)
+  const SEG = { 0: "abcdef", 1: "bc", 2: "abdeg", 3: "abcdg", 4: "bcfg", 5: "acdfg", 6: "acdefg", 7: "abc", 8: "abcdefg", 9: "abcdfg", O: "abcdef", F: "aefg", "-": "g" };
+  function digitSVG(x, ch, col) {
+    const on = SEG[ch] || "", w = 82, h = 130, t = 14, k = (s, p) => `<polygon points="${p}" fill="${on.includes(s) ? col : "#0d2a20"}" ${on.includes(s) ? `filter="url(#glow)"` : ""}/>`;
+    const X = v => x + v;
+    return k("a", `${X(t)},10 ${X(w - t)},10 ${X(w - t - 8)},${10 + t} ${X(t + 8)},${10 + t}`) +
+      k("b", `${X(w)},${14} ${X(w)},${h / 2 + 2} ${X(w - t)},${h / 2 - 6} ${X(w - t)},${14 + t}`) +
+      k("c", `${X(w)},${h / 2 + 10} ${X(w)},${h + 6} ${X(w - t)},${h - 2 - t + 8} ${X(w - t)},${h / 2 + 18}`) +
+      k("d", `${X(t)},${h + 10} ${X(w - t)},${h + 10} ${X(w - t - 8)},${h + 10 - t} ${X(t + 8)},${h + 10 - t}`) +
+      k("e", `${X(0)},${h / 2 + 10} ${X(t)},${h / 2 + 18} ${X(t)},${h - t + 6} ${X(0)},${h + 6}`) +
+      k("f", `${X(0)},14 ${X(t)},${14 + t} ${X(t)},${h / 2 - 6} ${X(0)},${h / 2 + 2}`) +
+      k("g", `${X(t)},${h / 2 + 6} ${X(t + 6)},${h / 2 - 1} ${X(w - t - 6)},${h / 2 - 1} ${X(w - t)},${h / 2 + 6} ${X(w - t - 6)},${h / 2 + 13} ${X(t + 6)},${h / 2 + 13}`);
+  }
+  let shown = 0;
+  function drawReg(v, col) {
+    const s = v === "OF" ? "OF" : String(v).padStart(2, " ");
+    col = col || (v === "OF" ? "#ff4b4b" : v >= 90 ? "#ff4b4b" : v >= 70 ? "#ffb547" : "#5dffc3");
+    $("#seg").innerHTML = `<defs><filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
+      digitSVG(18, s[0] === " " ? "" : s[0], col) + digitSVG(124, s[1], col);
+    $("#heat").style.width = (v === "OF" ? 100 : Math.min(100, v / 99 * 100)) + "%";
+    $("#reg").classList.toggle("hot", v === "OF" || v >= 90);
+    $("#reg").setAttribute("aria-label", v === "OF" ? "합계 넘침" : `합계 ${v}`);
+  }
+  // 합계가 바뀌면 숫자가 한 칸씩 굴러간다
+  async function rollTo(v) {
+    const from = shown, step = v > from ? 1 : -1, n = Math.abs(v - from);
+    const dt = n > 30 ? 12 : n > 10 ? 22 : 40;
+    const g = gen;
+    for (let x = from; x !== v; x += step) { if (g !== gen) return; drawReg(x + step); if (Math.abs(x - from) % 2 === 0) sfx.count(x + step); if (!reduce) await sleep(dt); }
+    shown = v; drawReg(v);
+    const r = $("#reg"); r.classList.remove("bump"); void r.offsetWidth; r.classList.add("bump");
+    if (v >= 90) sfx.warn();
+  }
+
+  // ================= 카드 =================
+  const SUITS = [["♠", "b"], ["♥", "r"], ["♦", "r"], ["♣", "b"]];
+  const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+  const FX = { A: "+1 / +10", 4: "0 · 뒤집기", 9: "0 · 패스", 10: "−10", J: "+10", Q: "+10", K: "→ 99" };
+  // 이 카드를 냈을 때 합계가 될 수 있는 값들
+  function results(card, total) {
+    switch (card.r) {
+      case "A": return [total + 1, total + 10];
+      case "4": case "9": return [total];
+      case "10": return [Math.max(0, total - 10)];
+      case "J": case "Q": return [total + 10];
+      case "K": return [99];
+      default: return [total + Number(card.r)];
+    }
+  }
+  const legal = (card, total) => results(card, total).some(v => v <= 99);
+  function cardEl(card, faceDown) {
+    const e = document.createElement("div");
+    if (faceDown) { e.className = "card back"; e.innerHTML = `<div class="core">99</div>`; return e; }
+    const sp = FX[card.r] && card.r !== "J" && card.r !== "Q";
+    e.className = "card" + (sp ? " sp" : "");
+    e.innerHTML = `<span class="suit ${card.s[1]}">${card.s[0]}</span><span class="rank">${card.r}</span>` +
+      `<span class="fx">${FX[card.r] || "+" + card.r}</span><span class="to"></span>`;
+    e.setAttribute("aria-label", `${card.s[0]} ${card.r}, ${FX[card.r] || "+" + card.r}`);
+    return e;
+  }
+
+  // ================= 판 =================
+  let deck, pile, hands, total, turn, busy, over, gen = 0;   // gen: 판 번호. 새 판이 시작되면 이전 판의 비동기 흐름은 멈춘다
+  function newDeck() { const d = []; for (const s of SUITS) for (const r of RANKS) d.push({ s, r }); for (let i = d.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [d[i], d[j]] = [d[j], d[i]]; } return d; }
+  function drawOne() {
+    if (!deck.length) {           // 더미가 바닥나면 낸 카드(맨 위 빼고)를 섞어 다시 쓴다
+      const top = pile.pop(); deck = pile; pile = [top];
+      for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+      say("더미를 다시 섞었다", "");
+    }
+    return deck.pop();
+  }
+  function say(t, cls) { const m = $("#msg"); m.textContent = t; m.className = "msg " + (cls || ""); }
+
+  function render() {
+    const ch = $("#cpuHand"); ch.innerHTML = "";
+    for (let i = 0; i < hands.cpu.length; i++) ch.appendChild(cardEl(null, true));
+    const mh = $("#myHand"); mh.innerHTML = "";
+    mh.classList.toggle("wait", turn !== "me" || busy || over);
+    hands.me.forEach((c, i) => {
+      const e = cardEl(c);
+      const ok = legal(c, total), vals = results(c, total);
+      e.classList.add(ok ? "ok" : "bad");
+      e.querySelector(".to").textContent = ok ? "→ " + vals.filter(v => v <= 99).join("·") : "넘침";
+      if (turn === "me" && !busy && !over && ok) { e.tabIndex = 0; e.addEventListener("click", () => myPlay(i)); e.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); myPlay(i); } }); }
+      mh.appendChild(e);
+    });
+    $("#deck").innerHTML = ""; if (deck.length) $("#deck").appendChild(cardEl(null, true));
+    $("#deckN").textContent = deck.length + "장";
+    $("#pile").innerHTML = ""; if (pile.length) $("#pile").appendChild(cardEl(pile[pile.length - 1]));
+  }
+
+  // 카드 하나가 from 자리에서 to 자리로 날아간다
+  async function fly(fromEl, toEl, el) {
+    if (reduce || !fromEl || !toEl) return;
+    const a = fromEl.getBoundingClientRect(), b = toEl.getBoundingClientRect();
+    el.classList.add("fly"); el.style.left = a.left + "px"; el.style.top = a.top + "px"; el.style.width = a.width + "px"; el.style.height = a.height + "px";
+    document.body.appendChild(el); void el.offsetWidth;
+    el.style.transform = `translate(${b.left - a.left}px, ${b.top - a.top}px) scale(${b.width / a.width}, ${b.height / a.height})`;
+    await sleep(400); el.remove();
+  }
+
+  function start() {
+    gen++;
+    document.querySelectorAll(".fly, .ask").forEach(e => e.remove());
+    deck = newDeck(); pile = []; hands = { me: [], cpu: [] }; total = 0; shown = 0; over = false; busy = false;
+    for (let i = 0; i < 3; i++) { hands.me.push(deck.pop()); hands.cpu.push(deck.pop()); }
+    turn = Math.random() < 0.5 ? "me" : "cpu";
+    drawReg(0); $("#over").hidden = true; document.body.classList.remove("crash");
+    render();
+    say(turn === "me" ? "동전 던지기: 내가 먼저" : "동전 던지기: CPU가 먼저", turn === "me" ? "mine" : "cpu");
+    sfx.tick();
+    const g = gen; setTimeout(() => { if (g === gen) nextTurn(); }, 900);
+  }
+
+  async function nextTurn() {
+    if (over) return;
+    const hand = hands[turn];
+    if (!hand.some(c => legal(c, total))) return lose(turn);   // 낼 수 있는 카드가 없으면 끝
+    if (turn === "me") { busy = false; say("내 차례 · 카드를 고르세요", "mine"); render(); }
+    else cpuTurn();
+  }
+
+  async function play(who, idx, value) {
+    const g = gen;
+    busy = true; render();
+    const card = hands[who][idx];
+    // 손에서 판으로
+    const fromEl = who === "me" ? $("#myHand").children[idx] : $("#cpuHand").children[idx];
+    const el = cardEl(card);
+    hands[who].splice(idx, 1); pile.push(card);
+    sfx.play();
+    await fly(fromEl, $("#pile"), el);
+    if (g !== gen) return;
+    render();
+    const prev = total;
+    total = value;
+    if (card.r === "K") sfx.max(); else if (card.r === "10") sfx.minus(); else if (card.r === "4") sfx.rev(); else if (card.r === "9") sfx.zero();
+    const what = card.r === "K" ? "→ 99!" : card.r === "4" ? "0 · 순서 뒤집기" : card.r === "9" ? "0 · 패스" : card.r === "10" ? `−${prev - total}` : `+${total - prev}`;
+    say(`${who === "me" ? "나" : "CPU"}: ${card.s[0]}${card.r}  ${what}`, who === "me" ? "mine" : "cpu");
+    await rollTo(total);
+    if (g !== gen) return;
+    // 한 장 뽑기
+    const nc = drawOne(); hands[who].push(nc); sfx.draw();
+    const tmp = cardEl(nc, who !== "me");
+    render();
+    const slot = who === "me" ? $("#myHand").lastElementChild : $("#cpuHand").lastElementChild;
+    if (slot) slot.style.visibility = "hidden";
+    await fly($("#deck"), slot, tmp);
+    if (slot) slot.style.visibility = "";
+    await sleep(250);
+    if (g !== gen) return;
+    turn = who === "me" ? "cpu" : "me";
+    nextTurn();
+  }
+
+  function myPlay(i) {
+    if (busy || over || turn !== "me") return;
+    const c = hands.me[i];
+    if (!legal(c, total)) return;
+    if (c.r === "A") return askAce(i);
+    play("me", i, results(c, total)[0]);
+  }
+  function askAce(i) {
+    busy = true; render();
+    const d = document.createElement("div");
+    d.className = "ask";
+    d.innerHTML = `<div class="box"><p>A를 얼마로 낼까요?</p><div class="row"><button type="button" data-v="${total + 1}">+1</button><button type="button" data-v="${total + 10}">+10</button></div><button class="btn" type="button" data-x>취소</button></div>`;
+    for (const b of d.querySelectorAll("button[data-v]")) { if (Number(b.dataset.v) > 99) b.disabled = true; b.addEventListener("click", () => { d.remove(); play("me", i, Number(b.dataset.v)); }); }
+    d.querySelector("[data-x]").addEventListener("click", () => { d.remove(); busy = false; render(); });
+    document.body.appendChild(d);
+    d.querySelector("button:not(:disabled)").focus();
+  }
+
+  // ================= CPU (보통) =================
+  // 숫자 카드로 버틸 수 있으면 숫자 카드를 쓰고, 0·−10·99로 만드는 '살길' 카드(4·9·10·K)는 아껴 둔다.
+  // 합계를 높게 올려 상대를 몰아붙이되, 다음 내 차례에 낼 카드가 남는지도 본다. 약간의 실수도 한다.
+  async function cpuTurn() {
+    busy = true; render();
+    $("#cpuFace").classList.add("think");
+    say("CPU가 계산 중…", "cpu");
+    const g = gen;
+    await sleep(rand(700, 1300));
+    if (g !== gen) return;
+    $("#cpuFace").classList.remove("think");
+    const SAVE = { 4: 14, 9: 14, 10: 18, K: 24 };
+    let best = null;
+    hands.cpu.forEach((c, i) => {
+      for (const v of results(c, total)) {
+        if (v > 99) continue;
+        const rest = hands.cpu.filter((_, j) => j !== i);
+        let sc = v * 0.35 - (SAVE[c.r] || 0);
+        if (v >= 89) sc += 8;                                         // 상대를 벼랑 끝으로
+        if (!rest.some(r => SAVE[r.r]) && v >= 80) sc -= 10;         // 내게 살길이 없으면 너무 올리지 않는다
+        if (c.r === "10" && total < 20) sc -= 10;                     // 낮을 때 −10은 아깝다
+        sc += rand(-4, 4);
+        if (!best || sc > best.sc) best = { i, v, sc };
+      }
+    });
+    if (!best) return lose("cpu");
+    play("cpu", best.i, best.v);
+  }
+
+  async function lose(who) {
+    over = true; busy = true; render();
+    say(who === "me" ? "낼 수 있는 카드가 없다 · 넘침!" : "CPU가 낼 카드가 없다 · 넘침!", who === "me" ? "cpu" : "mine");
+    // 가장 작은 카드를 억지로 내서 넘치는 모습을 보여 준다
+    const h = hands[who], c = h.reduce((a, b) => Math.min(...results(a, total)) <= Math.min(...results(b, total)) ? a : b);
+    pile.push(c); h.splice(h.indexOf(c), 1); render();
+    const g = gen;
+    await sleep(400);
+    if (g !== gen) return;
+    sfx.crash(); document.body.classList.add("crash"); drawReg("OF");
+    try { if (navigator.vibrate) navigator.vibrate([80, 40, 160]); } catch (e) {}
+    await sleep(1100);
+    if (g !== gen) return;
+    const win = who !== "me";
+    if (win) { sfx.win(); store.set("nn.wins", String((Number(store.get("nn.wins")) || 0) + 1)); }
+    const wins = Number(store.get("nn.wins")) || 0;
+    $("#overTitle").textContent = win ? "승리" : "패배"; $("#overTitle").className = win ? "" : "lose";
+    $("#overSub").textContent = (win ? "CPU 레지스터가 넘쳤다" : "내 레지스터가 넘쳤다") + ` · 마지막 합계 ${total}` + (wins ? ` · 지금까지 ${wins}승` : "");
+    $("#rulesBox").hidden = true; $("#goBtn").textContent = "다시 하기"; overMode = "start";
+    $("#over").hidden = false; $("#goBtn").focus();
+  }
+
+  // 시작·결과·규칙 창은 하나. 규칙을 판 도중에 열었으면 '계속하기'로 닫기만 한다
+  let overMode = "start";
+  $("#goBtn").addEventListener("click", () => { audio(); if (overMode === "resume") { $("#over").hidden = true; return; } start(); });
+  $("#newBtn").addEventListener("click", () => { if (over || !deck || (turn === "me" && !busy)) start(); });
+  $("#rulesBtn").addEventListener("click", () => {
+    const mid = deck && !over;
+    overMode = mid ? "resume" : "start";
+    $("#overTitle").textContent = "99"; $("#overTitle").className = ""; $("#overSub").textContent = "99를 넘기지 않고 버텨라";
+    $("#rulesBox").hidden = false; $("#goBtn").textContent = mid ? "계속하기" : "시작"; $("#over").hidden = false;
+  });
+  drawReg(0);
+  window.__nn = { get total() { return total; }, get hands() { return hands; }, get turn() { return turn; }, get over() { return over; }, get busy() { return busy; }, legal, results };
+})();
+</script>
+</body>
+</html>
