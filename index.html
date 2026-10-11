@@ -19,39 +19,43 @@
     --body: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
   }
   * { box-sizing: border-box; }
+  /* 게임이 늘어도 한 화면에: 화면 높이에 맞춰 2열 격자를 늘이고 줄인다 */
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--page); color: var(--ink);
-    font-family: var(--body); font-size: 18px; line-height: 1.5;
-    padding-inline: 16px; padding-block: 48px 40px;
+    font-family: var(--body); font-size: 16px; line-height: 1.4;
+    padding-inline: 14px; padding-block: calc(14px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-bottom, 0px));
   }
-  main { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
-  h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(40px, 7vw, 60px); line-height: 1.05; }
-  .lead { margin: 6px 0 0; color: var(--sub); font-size: 19px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 20px; }
+  main { max-width: 880px; height: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+  .head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(32px, 6vw, 48px); line-height: 1.05; }
+  .lead { margin: 0; color: var(--sub); font-size: 16px; }
+  .grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 12px; }
   a.tile {
-    display: flex; flex-direction: column; text-decoration: none; color: inherit;
-    background: var(--panel); border-radius: 28px; overflow: hidden;
+    min-height: 0; display: flex; flex-direction: column; text-decoration: none; color: inherit;
+    background: var(--panel); border-radius: 20px; overflow: hidden;
     box-shadow: 0 1px 2px rgba(0,0,0,.06); transition: transform .2s ease, box-shadow .2s ease;
   }
   a.tile:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,.12); }
   a.tile:focus-visible { outline: 3px solid #0071e3; outline-offset: 4px; }
-  .art { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; }
+  .art { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .art svg { width: 100%; height: 100%; }
   .art.zero { background: #04110c; }
   .art.matgo { background: #5d6744; }
-  .info { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 4px; }
-  .info h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 32px; line-height: 1.1; }
-  .info p { margin: 0; color: var(--sub); }
-  .go { margin-top: 10px; font-weight: 700; color: #0071e3; }
-  footer { color: var(--sub); font-size: 15px; }
+  .info { flex: none; padding: 10px 14px 12px; display: flex; flex-direction: column; gap: 1px; }
+  .info h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(22px, 4vw, 30px); line-height: 1.1; }
+  .info p { margin: 0; color: var(--sub); font-size: 15px; }
+  .go { display: none; }
+  footer { color: var(--sub); font-size: 12px; text-align: center; }
   footer a { color: var(--sub); }
   @media (prefers-reduced-motion: reduce) { a.tile { transition: none; } }
 </style>
 </head>
 <body>
 <main>
-  <div>
+  <div class="head">
     <h1>오락실</h1>
-    <p class="lead">브라우저에서 바로 하는 작은 게임들</p>
+    <p class="lead">골라서 바로 하는 작은 게임들</p>
   </div>
 
   <div class="grid">
@@ -67,7 +71,7 @@
       </div>
       <div class="info">
         <h2>99</h2>
-        <p>CPU와 1:1 카드 대결. 합계를 99 넘기는 쪽이 진다.</p>
+        <p>CPU와 카드 대결</p>
         <span class="go">하러 가기 →</span>
       </div>
     </a>
@@ -86,7 +90,7 @@
       </div>
       <div class="info">
         <h2>홈런왕</h2>
-        <p>원버튼 타격. 타이밍이 정확할수록 멀리. 아웃 세 개면 끝.</p>
+        <p>원버튼 타격</p>
         <span class="go">하러 가기 →</span>
       </div>
     </a>
@@ -100,7 +104,7 @@
       </div>
       <div class="info">
         <h2>양맞고</h2>
-        <p>컴퓨터와 1:1로 치는 고스톱. 글씨와 패를 크게 그렸습니다.</p>
+        <p>1:1 고스톱</p>
         <span class="go">하러 가기 →</span>
       </div>
     </a>
@@ -118,13 +122,13 @@
       </div>
       <div class="info">
         <h2>ZERO RUN</h2>
-        <p>반도체 속 숫자 0이 1의 세계를 건너는 원버튼 러너.</p>
+        <p>원버튼 러너</p>
         <span class="go">하러 가기 →</span>
       </div>
     </a>
   </div>
 
-  <footer>© 2026 yangduckduck-source · 플레이와 공유는 자유, 코드 재사용은 금지 (<a href="https://github.com/yangduckduck-source/bug-free-octo-broccoli/blob/main/LICENSE">LICENSE</a>)</footer>
+  <footer>© 2026 yangduckduck-source · 플레이·공유 자유, 코드 재사용 금지 (<a href="https://github.com/yangduckduck-source/bug-free-octo-broccoli/blob/main/LICENSE">LICENSE</a>)</footer>
 </main>
 <script>
   // 게임 링크에 들어갈 때마다 버전 표시(?v=시각)를 붙인다.
