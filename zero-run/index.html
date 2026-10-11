@@ -65,6 +65,11 @@
   @keyframes blink { 50% { opacity: 0; } }
   #rotate { display: none; font-size: 13px; color: var(--dim); }
   @media (orientation: portrait) { #rotate { display: block; } }
+  #replay {
+    position: absolute; left: 8px; bottom: 6px; pointer-events: auto;
+    background: rgba(0,0,0,.5); color: var(--dim); border: 2px solid #123326; font: inherit; font-size: 11px; padding: 2px 7px; cursor: pointer;
+  }
+  #replay.hidden { display: none; }
   #mute {
     position: absolute; right: 8px; bottom: 6px;
     pointer-events: auto;
@@ -94,6 +99,7 @@
     </div>
 
     <button id="mute" type="button">소리 켬</button>
+    <button id="replay" type="button" class="hidden">오프닝</button>
   </div>
   <div id="rotate">가로로 돌리면 더 크게 보입니다.</div>
 </div>
@@ -119,6 +125,7 @@
   }
 
   const $title = document.getElementById("title");
+  const $replay = document.getElementById("replay");
   const $over = document.getElementById("over");
   const $cause = document.getElementById("cause");
   const $dist = document.getElementById("dist");
@@ -496,8 +503,175 @@
     setTimeout(() => { if (state === "over") $over.classList.remove("hidden"); }, 600);
   }
 
+  // ---------- 오프닝 ----------
+  // 처음 켤 때 한 번: POWER ON(첫 터치로 소리를 연다) → 제목 → 짧은 영상 → 프롤로그(타자) → 제목 화면.
+  // 누르면 언제든 건너뛴다. 제목 화면 왼쪽 아래 '오프닝'으로 다시 볼 수 있다.
+  const PROLOGUE = [
+    "시스템 시각 00:00:00.",
+    "웨이퍼 한 장 위에 도시가 세워졌다.",
+    "불이 켜진 자리는 1, 꺼진 자리는 0.",
+    "세상은 1의 기둥으로 이어진 길이었고",
+    "0은 그 사이의 빈칸일 뿐이었다.",
+    "",
+    "어느 클럭, 빈칸 하나가 눈을 떴다.",
+    "",
+    "길 위로 버그가 번지고 있었다.",
+    "글리치가 픽셀을 갉아먹고",
+    "누수가 바닥을 적시고",
+    "스택은 천장에서부터 무너져 내렸다.",
+    "",
+    "멈추면 덮어쓰인다.",
+    "0은 달리기 시작했다.",
+    "아무것도 아닌 것이, 끝까지 가 보기로 했다.",
+  ];
+  const OP_TITLE = 3.4, OP_TYPE = 12.2, CPS = 22;          // 제목 끝, 타자 시작, 초당 글자 수
+  // 타자 흐름: 빈 줄은 잠깐 쉰다(글자 7개 분량), 줄 끝마다 살짝 숨 고르기(글자 2개 분량)
+  const TYPE_STREAM = [];
+  PROLOGUE.forEach((ln, i) => { for (const ch of ln) TYPE_STREAM.push([i, ch]); for (let k = 0; k < (ln ? 3 : 7); k++) TYPE_STREAM.push([i, null]); });
+  const OP_END = OP_TYPE + TYPE_STREAM.length / CPS;
+  let op = null;
+  const opStore = () => store.get("zerorun.opened") === "1";
+  function startOpening() {
+    audio();
+    state = "opening";
+    op = { t: 0, fired: new Set(), typed: 0 };
+    $title.classList.add("hidden"); $over.classList.add("hidden"); $replay.classList.add("hidden");
+  }
+  function endOpening() {
+    store.set("zerorun.opened", "1");
+    op = null;
+    state = "title";
+    reset();
+    $title.classList.remove("hidden"); $replay.classList.remove("hidden");
+    sfx.start();
+  }
+  const once = (key, fn) => { if (!op.fired.has(key)) { op.fired.add(key); fn(); } };
+  function updateOpening(dt) {
+    op.t += dt;
+    const T = op.t;
+    once("boot", () => { tone(55, 0.5, "sawtooth", 0.08, 110); noise(0.25, 0.05, 400); });
+    if (T > 1.3) once("title", () => [0, 4, 7, 12, 16].forEach((n, i) => tone(note(n), 0.12, "square", 0.045, 0, i * 0.08)));
+    if (T > OP_TITLE) once("wafer", () => { noise(1.2, 0.04, 2500); tone(180, 2.2, "triangle", 0.04, 720); });
+    if (T > OP_TITLE + 2.6) once("chip", () => { noise(0.15, 0.08, 6000); tone(880, 0.1, "square", 0.04, 1760); });
+    for (let i = 0; i < 12; i++) if (T > OP_TITLE + 2.8 + i * 0.14) once("pil" + i, () => tone(note(i), 0.05, "square", 0.03));
+    if (T > OP_TITLE + 5.6) once("eye", () => { tone(1320, 0.05, "square", 0.04); tone(1760, 0.08, "square", 0.04, 0, 0.07); });
+    if (T > OP_TITLE + 6.6) once("bug", () => { noise(0.3, 0.07, 3000); tone(300, 0.3, "sawtooth", 0.04, 90); });
+    if (T > OP_TITLE + 7.4) once("null", () => { noise(0.4, 0.1, 1200); tone(220, 0.4, "square", 0.05, 40); shake = 5; });
+    // 타자: 한 글자 찍힐 때마다 아주 작은 딸깍
+    if (T > OP_TYPE) {
+      const n = Math.min(TYPE_STREAM.length, Math.floor((T - OP_TYPE) * CPS));
+      while (op.typed < n) { const c = TYPE_STREAM[op.typed++][1]; if (c && c !== " ") tone(1900 + Math.random() * 400, 0.012, "square", 0.012); }
+    }
+    if (T > OP_END + 0.6) once("done", () => [7, 9, 12].forEach((n, i) => tone(note(n + 5), 0.08, "square", 0.035, 0, i * 0.06)));
+    if (T > OP_END + 6) endOpening();
+    shake *= Math.pow(0.002, dt);
+  }
+  const OP_GAP = 5;                           // 1의 기둥 줄에서 비어 있는 칸(0이 깨어날 자리)
+  function opZero(cx, cy, open, look) {
+    ctx.fillStyle = C.zeroGlow; ctx.beginPath(); ctx.ellipse(cx, cy, PW / 2 + 3, PH / 2 + 3, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = C.zero; ctx.lineWidth = 3; ctx.beginPath(); ctx.ellipse(cx, cy, PW / 2 - 1.5, PH / 2 - 1.5, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#e6fff4"; const eh = open ? 3 : 1;
+    ctx.fillRect(R(cx - 2 + look), R(cy - 2 + (open ? 0 : 1)), 1, eh); ctx.fillRect(R(cx + 1 + look), R(cy - 2 + (open ? 0 : 1)), 1, eh);
+  }
+  function drawOpening() {
+    ctx.setTransform(K, 0, 0, K, 0, 0);
+    ctx.fillStyle = "#020705"; ctx.fillRect(0, 0, W, H);
+    ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    if (state === "power") {
+      const on = Math.floor(t * 2) % 2;
+      ctx.font = "bold 22px monospace"; ctx.fillStyle = on ? C.zero : "#1d5a43"; ctx.fillText("▶ POWER ON", W / 2, H / 2 - 8);
+      ctx.font = "12px sans-serif"; ctx.fillStyle = "#6fa58f"; ctx.fillText("화면을 눌러 전원 켜기", W / 2, H / 2 + 20);
+      ctx.textAlign = "left"; return;
+    }
+    const T = op.t;
+    ctx.save();
+    if (shake > 0.3) ctx.translate(R(rand(-shake, shake)), R(rand(-shake, shake)));
+    if (T < OP_TITLE) {
+      // 1) 제목: 커서처럼 깜박이는 0 → 지직거리며 켜지는 ZERO RUN
+      if (T < 1.3) {
+        if (Math.floor(T * 4) % 2 === 0) { ctx.font = "bold 28px monospace"; ctx.fillStyle = C.zero; ctx.fillText("0", W / 2, H / 2); }
+      } else {
+        const u = T - 1.3, flick = u < 0.6 ? (Math.random() < 0.55 ? 1 : 0.15) : 1;
+        ctx.globalAlpha = flick; ctx.font = "bold 46px monospace";
+        ctx.fillStyle = "#0b4a35"; ctx.fillText("ZERO RUN", W / 2 + 3, H / 2 - 6 + 3);
+        ctx.fillStyle = C.zero; ctx.fillText("ZERO RUN", W / 2, H / 2 - 6);
+        ctx.globalAlpha = clamp((u - 0.9) * 2, 0, 1); ctx.font = "13px sans-serif"; ctx.fillStyle = "#e6fff4"; ctx.fillText("1의 세계를 건너라.", W / 2, H / 2 + 30);
+        ctx.globalAlpha = 1;
+      }
+    } else if (T < OP_TITLE + 2.6) {
+      // 2-a) 웨이퍼: 은빛 원판 위 격자 칩들, 그중 하나로 빨려 들어간다
+      const v = (T - OP_TITLE) / 2.6, z = 0.95 + Math.pow(v, 4) * 15, tx = 18 * 0.62, ty = -10 * 0.62;
+      ctx.translate(W / 2 - tx * (z - 1), H / 2 - ty * (z - 1)); ctx.scale(z * 0.62, z * 0.62);      // 처음엔 웨이퍼 한 장이 통째로 보인다
+      const g = ctx.createRadialGradient(-30, -40, 10, 0, 0, 120); g.addColorStop(0, "#c9d6d2"); g.addColorStop(0.6, "#7d8d8a"); g.addColorStop(1, "#3c4746");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 112, 0, Math.PI * 2); ctx.fill();
+      ctx.save(); ctx.beginPath(); ctx.arc(0, 0, 108, 0, Math.PI * 2); ctx.clip();
+      ctx.strokeStyle = "rgba(20,40,36,.55)"; ctx.lineWidth = 0.6;
+      for (let x = -112; x <= 112; x += 12) { ctx.beginPath(); ctx.moveTo(x, -112); ctx.lineTo(x, 112); ctx.stroke(); }
+      for (let y = -112; y <= 112; y += 12) { ctx.beginPath(); ctx.moveTo(-112, y); ctx.lineTo(112, y); ctx.stroke(); }
+      const sweep = -140 + v * 300; ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.beginPath(); ctx.moveTo(sweep, -120); ctx.lineTo(sweep + 30, -120); ctx.lineTo(sweep - 30, 120); ctx.lineTo(sweep - 60, 120); ctx.fill();
+      ctx.fillStyle = "rgba(93,255,195," + (0.25 + 0.5 * v).toFixed(2) + ")"; ctx.fillRect(tx - 6 + 0.5, ty - 6 + 0.5, 11, 11);
+      ctx.restore();
+      ctx.fillStyle = "#020705"; ctx.fillRect(-6, 106, 12, 8);   // 웨이퍼 홈
+    } else {
+      // 2-b) 칩 속: 회로 위로 1의 기둥이 차례로 서고, 빈칸에서 0이 눈을 뜬다. 버그가 번지고 기둥 하나가 NULL로 빠진다
+      const v = T - OP_TITLE - 2.6;
+      drawBoard(T * 40);
+      const base = 160, x0 = 20;
+      for (let i = 0; i < 22; i++) {
+        if (i === OP_GAP) continue;
+        const rise = clamp((v - 0.2 - i * 0.14) / 0.35, 0, 1), top = base + (1 - rise * rise) * 120;
+        if (rise <= 0) continue;
+        drawOne(x0 + i * CW, top, !(i === 15 && v > 4.8));
+      }
+      if (v > 2.2) {
+        const cx = x0 + OP_GAP * CW + CW / 2, hop = v > 3 && v < 3.4 ? -Math.sin((v - 3) / 0.4 * Math.PI) * 10 : 0;
+        ctx.globalAlpha = clamp((v - 2.2) * 2, 0, 1);
+        opZero(cx, base - PH / 2 + hop, v > 3, v > 4 ? 1 : 0);
+        ctx.globalAlpha = 1;
+      }
+      if (v > 4) {
+        const k = v - 4;
+        drawBug({ kind: "glitch", x: W - 20 - k * 22, base, t: T, jx: Math.floor(T * 6) % 3 === 0 ? Math.round(rand(-3, 3)) : 0 });
+        drawBug({ kind: "ladybug", x: W + 10 - k * 34, base, t: T, off: 0, face: -1 });
+        ctx.fillStyle = "rgba(123,60,255,.85)"; ctx.fillRect(x0 + 9 * CW - k * 6, base - 3, 10 + k * 10, 3);   // 누수
+        if (k > 0.8) { ctx.fillStyle = "#3d3370"; for (let y = -10, j = 0; y < 40 + k * 12; y += 9, j++) ctx.fillRect(x0 + 18 * CW, y, 22, 8); }   // 스택
+      }
+      if (v > 4.8 && v < 5.3) { ctx.fillStyle = "rgba(255,59,75,.18)"; ctx.fillRect(0, 0, W, H); }
+    }
+    ctx.restore();
+    // 3) 프롤로그: 화면을 어둡게 덮고, 초록 글자가 한 자씩 찍히며 줄이 차면 위로 밀려 올라간다
+    if (T > OP_TYPE - 0.6) {
+      ctx.fillStyle = "rgba(2,8,6," + (0.82 * clamp((T - OP_TYPE + 0.6) / 0.6, 0, 1)).toFixed(3) + ")"; ctx.fillRect(0, 0, W, H);
+      const n = Math.min(TYPE_STREAM.length, Math.max(0, Math.floor((T - OP_TYPE) * CPS)));
+      const shown = PROLOGUE.map(() => "");
+      let cur = 0;
+      for (let i = 0; i < n; i++) { const [li, ch] = TYPE_STREAM[i]; cur = li; if (ch) shown[li] += ch; }
+      const LH = 15, TOP = 26, MAXV = 14, last = cur + 1;
+      const scroll = Math.max(0, last - MAXV) * LH;
+      ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.font = "bold 11px 'Apple SD Gothic Neo', 'Noto Sans KR', monospace";
+      for (let i = 0; i < last; i++) {
+        const y = TOP + i * LH - scroll;
+        if (y < 14) continue;
+        ctx.fillStyle = i === cur ? "#d6fff0" : C.zero; ctx.globalAlpha = i === cur ? 1 : 0.8;
+        ctx.fillText((i === 0 ? "> " : "  ") + shown[i], 56, y);
+      }
+      ctx.globalAlpha = 1;
+      if (n < TYPE_STREAM.length || Math.floor(T * 3) % 2) {   // 깜박이는 커서
+        const y = TOP + cur * LH - scroll, w = ctx.measureText((cur === 0 ? "> " : "  ") + shown[cur]).width;
+        ctx.fillStyle = C.zero; ctx.fillRect(56 + w + 1, y - 5, 6, 10);
+      }
+      if (T > OP_END + 0.6 && Math.floor(T * 2) % 2) { ctx.textAlign = "center"; ctx.font = "bold 12px sans-serif"; ctx.fillStyle = "#e6fff4"; ctx.fillText("— 누르면 시작 —", W / 2, H - 16); }
+    }
+    if (T < OP_END + 0.6) { ctx.textAlign = "left"; ctx.font = "10px sans-serif"; ctx.fillStyle = "rgba(111,165,143,.75)"; ctx.fillText("누르면 건너뛰기 ▶▶", 10, H - 10); }
+    // 주사선
+    ctx.fillStyle = "rgba(0,0,0,.18)"; for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+    ctx.textAlign = "left";
+  }
+
   // ---------- 입력: 버튼 하나 ----------
   function press() {
+    if (state === "power") { startOpening(); return; }
+    if (state === "opening") { if (op && op.t > 0.5) endOpening(); return; }
     if (state === "title") { start(); return; }
     if (state === "over") { if (deadT > 0.8) start(); return; }
     holding = true;
@@ -533,7 +707,8 @@
     p.blink -= dt;
     if (p.blink < -3) p.blink = 0.12;
 
-    if (state === "title") return;
+    if (state === "opening") { updateOpening(dt); return; }
+    if (state === "title" || state === "power") return;
 
     if (state === "over") {
       whiteout = Math.max(0, whiteout - dt * 6);
@@ -989,6 +1164,7 @@
 
   let ry = 0;   // 보간된 0의 높이
   function draw(alpha) {
+    if (state === "power" || state === "opening") { drawOpening(); return; }
     // 물리는 1/120초 단위로 움직이므로, 그 사이 시점을 메워 그린다.
     const sx = state === "play" ? R((1 - alpha) * lastDx) : 0;
     ry = state === "play" ? prevY + (p.y - prevY) * alpha : p.y;
@@ -1056,6 +1232,10 @@
   }
   reset();
   fit();
+  // 오프닝을 아직 안 봤으면 POWER ON 화면부터
+  if (!opStore()) { state = "power"; $title.classList.add("hidden"); } else $replay.classList.remove("hidden");
+  $replay.addEventListener("pointerdown", e => e.stopPropagation());
+  $replay.addEventListener("click", e => { e.stopPropagation(); $replay.blur(); startOpening(); });
   requestAnimationFrame(frame);
 
   // 자동 테스트용 읽기 전용 훅
