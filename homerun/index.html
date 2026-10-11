@@ -291,27 +291,39 @@
 
   // ================= 구질·투구 =================
   // 휘는 정도는 출발과 도착에서 0이 되도록: 처음엔 엉뚱한 곳으로 가다가 끝에서 꺾인다.
+  // 구질: kmh = 한국프로야구(KBO) 실제 구속 범위, col = 궤적 색
   const PITCHES = {
-    fast:   { name: "직구",     speed: 1.0,  bend: z => ({ x: 0, y: 0.06 * Math.sin(Math.PI * z) }) },
-    change: { name: "체인지업", speed: 0.8,  bend: z => ({ x: 0.12 * z * (1 - z ** 3), y: 0.18 * z * (1 - z ** 4) }) },
-    curve:  { name: "커브",     speed: 0.74, bend: z => ({ x: -0.18 * z * (1 - z ** 2), y: 0.55 * Math.sin(Math.PI * z) * (1 - z) + 0.25 * z * (1 - z ** 3) }) },
-    slider: { name: "슬라이더", speed: 0.88, bend: z => ({ x: 0.42 * z * (1 - z ** 4), y: 0.05 * Math.sin(Math.PI * z) }) },
-    fork:   { name: "포크",     speed: 0.86, bend: z => ({ x: 0, y: 0.42 * z * (1 - z ** 5) }) },
-    knuckle:{ name: "너클",     speed: 0.68, bend: (z, s) => ({ x: 0.07 * Math.sin(z * 17 + s) * z, y: 0.06 * Math.sin(z * 13 + s * 2) * z }) },
-    rising: { name: "라이징 직구", speed: 1.06, bend: z => ({ x: 0, y: -0.12 * z * (1 - z ** 2) + 0.08 * Math.sin(Math.PI * z) }) },
+    fast:   { name: "직구",     kmh: [139, 148], col: "#bfe6ff", bend: z => ({ x: 0, y: 0.06 * Math.sin(Math.PI * z) }) },
+    power:  { name: "강속구",   kmh: [150, 157], col: "#ff6a3d", bend: z => ({ x: 0, y: -0.1 * z * (1 - z ** 2) + 0.08 * Math.sin(Math.PI * z) }) },
+    slider: { name: "슬라이더", kmh: [128, 137], col: "#ffd84a", bend: z => ({ x: 0.42 * z * (1 - z ** 4), y: 0.05 * Math.sin(Math.PI * z) }) },
+    change: { name: "체인지업", kmh: [124, 132], col: "#c79bff", bend: z => ({ x: 0.12 * z * (1 - z ** 3), y: 0.18 * z * (1 - z ** 4) }) },
+    curve:  { name: "커브",     kmh: [112, 122], col: "#7ee08a", bend: z => ({ x: -0.18 * z * (1 - z ** 2), y: 0.55 * Math.sin(Math.PI * z) * (1 - z) + 0.25 * z * (1 - z ** 3) }) },
+    fork:   { name: "포크",     kmh: [127, 136], col: "#5ab8ff", bend: z => ({ x: 0, y: 0.42 * z * (1 - z ** 5) }) },
+    knuckle:{ name: "너클",     kmh: [104, 114], col: "#ff8ad8", bend: (z, s) => ({ x: 0.07 * Math.sin(z * 17 + s) * z, y: 0.06 * Math.sin(z * 13 + s * 2) * z }) },
   };
-  // 레벨별로 열리는 것
+  // 레벨별로 열리는 것: 처음엔 직구·강속구만, 레벨이 오를수록 변화구가 하나씩 열린다
   const UNLOCK = [
     null,
-    { pitch: "fast", motion: "windup" },
-    { pitch: "change" },
-    { pitch: "curve", motion: "set" },
+    null,
+    { motion: "set" },
     { pitch: "slider" },
-    { pitch: "fork", motion: "quick" },
-    { pitch: "knuckle", motion: "hesitate" },
+    { pitch: "change", motion: "quick" },
+    { pitch: "curve" },
+    { pitch: "fork", motion: "hesitate" },
     { motion: "side" },
-    { pitch: "rising" },
+    { pitch: "knuckle" },
   ];
+  // 변화구 비중: 처음 열릴 땐 가끔(약 12%), 레벨마다 늘어 최대 60%쯤
+  const BREAKING = { slider: 1.2, change: 1, curve: 0.9, fork: 0.9, knuckle: 0.35 };
+  function pickPitch(L) {
+    const brk = G.pool.filter(t => BREAKING[t]);
+    if (brk.length && Math.random() < clamp(0.12 + (L - 3) * 0.07, 0.12, 0.6)) {
+      let r = Math.random() * brk.reduce((a, t) => a + BREAKING[t], 0);
+      for (const t of brk) { r -= BREAKING[t]; if (r <= 0) return t; }
+      return brk[brk.length - 1];
+    }
+    return Math.random() < clamp(0.25 + (L - 1) * 0.03, 0.25, 0.5) ? "power" : "fast";
+  }
   const MOTION_NAME = { windup: "와인드업", set: "세트포지션", quick: "퀵모션", hesitate: "멈칫 투구", side: "사이드암" };
   const PITCHES_PER_LEVEL = 12;
 
@@ -330,7 +342,7 @@
   const later = (fn, ms) => timers.push({ at: now + ms, fn });
 
   function newGame() {
-    G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], pitches: 0, level: 1, hits: 0, hr: 0, pool: ["fast"], motions: ["windup"], batters: 1, combo: 0 };
+    G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], pitches: 0, level: 1, hits: 0, hr: 0, pool: ["fast", "power"], motions: ["windup"], batters: 1, combo: 0 };
     fx = []; msg = null; P = null; timers = [];
     nextPitch(900);
   }
@@ -351,10 +363,11 @@
   function nextPitch(delay = 1300) { queuedAt = now + delay; }
   function makePitch() {
     const L = G.level, delay = 0;
-    const type = pick(G.pool);
+    const type = pickPitch(L);
     const motion = pick(G.motions);
-    const fb = Math.min(162, 122 + (L - 1) * 4.5 + rand(-2, 2));            // 직구 구속(km/h)
-    const kmh = Math.round(fb * PITCHES[type].speed);
+    // 구속은 KBO 실제 범위에서 고르고, 레벨이 오르면 조금씩(최대 +6) 빨라진다
+    const [lo, hi] = PITCHES[type].kmh;
+    const kmh = Math.min(160, Math.round(rand(lo, hi) + Math.min(6, (L - 1) * 0.6)));
     const inZone = Math.random() < 0.56;
     let tx, ty;
     if (inZone) { tx = rand(ZONE.x0 + 0.03, ZONE.x1 - 0.03); ty = rand(ZONE.y0 + 0.04, ZONE.y1 - 0.04); }
@@ -366,7 +379,10 @@
     }
     const side = motion === "side";
     const rel = releasePoint(side);
-    const flight = (18.44 / (kmh / 3.6)) * 1000;     // 날아오는 시간(ms)
+    // 날아오는 시간(ms): 실제로는 놓는 곳에서 홈까지 약 17m를 평균 93% 속도로 0.4~0.6초에 온다.
+    // 그대로면 눈으로 쫓기 어려워, 중계 느린 화면처럼 늘려 보여 준다(레벨 1은 1.6배 → 점점 실제에 가깝게 1.18배까지)
+    const slow = clamp(1.62 - (L - 1) * 0.035, 1.18, 1.62);
+    const flight = 17 / (kmh / 3.6 * 0.93) * 1000 * slow;
     // 모션 시간표: 준비 → (다리 들기·멈칫) → 내딛기 → 놓기
     const setT = rand(500, 1100);
     const lift = motion === "quick" ? 120 : motion === "set" ? 320 : 480;
@@ -1235,7 +1251,42 @@
     const sc = ballScreen(w);
     const r = Math.max(1.6, 0.06 * sc.k);
     if (z < 0.18 && hand) { const u = ease(z / 0.18); sc.sx = hand.x + (sc.sx - hand.x) * u; sc.sy = hand.y + (sc.sy - hand.y) * u; }
+    // 혜성 꼬리: 지나온 길을 구질 색으로 끌고 온다. 공이 가까워질수록 굵고 길어진다
+    if (z > 0.12 && z <= 1) {
+      const col = PITCHES[P.type].col, N = 16, span = 0.3;
+      c.save(); c.globalCompositeOperation = "lighter"; c.lineCap = "round";
+      let prev = sc;
+      for (let i = 1; i <= N; i++) {
+        const zz = z - span * i / N; if (zz < 0.08) break;
+        const q = ballScreen(ballPos(zz)), f = 1 - i / N;
+        c.strokeStyle = col; c.globalAlpha = 0.55 * f; c.lineWidth = Math.max(1, r * 1.7 * f);
+        c.beginPath(); c.moveTo(prev.sx, prev.sy); c.lineTo(q.sx, q.sy); c.stroke();
+        prev = q;
+      }
+      c.globalAlpha = 0.16; c.fillStyle = col; c.beginPath(); c.arc(sc.sx, sc.sy, r * 1.5, 0, 7); c.fill();   // 공 둘레 빛
+      c.restore();
+    }
     drawBallAt(c, sc, r);
+  }
+
+  // 투구 궤적선: 공이 홈을 지난 뒤에도 중계 화면의 '피치 트래킹'처럼 날아온 길을 잠시 남긴다
+  function drawPitchTrack(c) {
+    if (!P || now < P.tRel + P.flight * 0.6) return;
+    const age = now - P.tArr, life = 1500;
+    if (age > life) return;
+    const zEnd = clamp((now - P.tRel) / P.flight, 0, 1);
+    const a = age < 0 ? 1 : 1 - age / life, col = PITCHES[P.type].col;
+    c.save(); c.globalCompositeOperation = "lighter"; c.lineCap = "round"; c.lineJoin = "round";
+    const pts = []; for (let i = 0; i <= 28; i++) { const zz = 0.1 + (zEnd - 0.1) * i / 28; pts.push(ballScreen(ballPos(zz))); }
+    for (const [w, al] of [[7, 0.12], [3, 0.5]]) {
+      c.globalAlpha = al * a; c.strokeStyle = col; c.lineWidth = w;
+      c.beginPath(); c.moveTo(pts[0].sx, pts[0].sy); for (const q of pts) c.lineTo(q.sx, q.sy); c.stroke();
+    }
+    if (zEnd >= 1) {        // 홈을 지난 자리 표시
+      const e = pts[pts.length - 1]; c.globalAlpha = 0.8 * a; c.lineWidth = 2;
+      c.beginPath(); c.arc(e.sx, e.sy, 9 + (1 - a) * 6, 0, 7); c.stroke();
+    }
+    c.restore();
   }
 
   function drawHitBall(c) {
@@ -1331,6 +1382,7 @@
     if (P && P.called === "hr") for (let i = 0; i < 18; i++) { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(Math.random() * W, 152 + Math.random() * 90, 2, 2); }
     const hand = drawPitcher(ctx).hand;
     drawZone(ctx);
+    drawPitchTrack(ctx);
     drawPitchBall(ctx, hand);
     drawHitBall(ctx);
     drawBatter(ctx);
@@ -1360,13 +1412,13 @@
 
   $("#best-title").textContent = best ? `최고 기록 ${best}점` : "";
   // 타이틀 화면용 기본 상태
-  G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], level: 1, pool: ["fast"], motions: ["windup"] };
+  G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], level: 1, pool: ["fast", "power"], motions: ["windup"] };
   fx = [];
   fit();
   requestAnimationFrame(frame);
 
   // 테스트용 읽기 훅
-  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms) };
+  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), pickPitch: L => pickPitch(L) };
 })();
 </script>
 </body>
