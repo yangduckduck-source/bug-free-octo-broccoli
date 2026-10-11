@@ -112,12 +112,11 @@
   .card::before, .card::after { content: ""; position: absolute; top: 14px; bottom: 14px; width: 5px;
     background: repeating-linear-gradient(transparent 0 6px, var(--gold) 6px 10px); }
   .card::before { left: -6px; } .card::after { right: -6px; }
-  .card .suit { position: absolute; top: 6px; left: 8px; font-size: 18px; line-height: 1; }
-  .card .suit.r { color: #ff6a6a; } .card .suit.b { color: #b8d9ff; }
-  .card .rank { font: 900 calc(var(--cw) * 0.45)/1 var(--digit); color: var(--zero); text-shadow: 0 0 10px rgba(93,255,195,.45); }
+  .card .rank { font: 900 calc(var(--cw) * 0.62)/1 var(--digit); color: var(--zero); text-shadow: 0 0 10px rgba(93,255,195,.45); }
   .card .fx { font: 700 15px/1.1 inherit; color: var(--ink); background: rgba(0,0,0,.45); padding: 3px 7px; border-radius: 6px; }
   .card.sp .rank { color: var(--amber); text-shadow: 0 0 10px rgba(255,181,71,.5); }
-  .slot .card .rank { font-size: 30px; } .slot .card .fx { font-size: 11px; padding: 2px 4px; white-space: nowrap; } .slot .card .suit { font-size: 13px; top: 4px; left: 6px; }
+  .card .rank.two { font-size: calc(var(--cw) * 0.46); letter-spacing: -.04em; }
+  .slot .card .rank { font-size: 40px; } .slot .card .rank.two { font-size: 30px; } .slot .card .fx { font-size: 11px; padding: 2px 4px; white-space: nowrap; }
   .card .fx { white-space: nowrap; }
   .card .to { white-space: nowrap; position: absolute; bottom: -26px; left: 0; right: 0; text-align: center; font: 700 15px var(--digit); color: var(--dim); }
   .card.back { background: repeating-linear-gradient(45deg, #0e2a22 0 6px, #0b211b 6px 12px); border-color: #24503f; }
@@ -319,6 +318,7 @@
   }
 
   // ================= 카드 =================
+  // 같은 숫자가 네 장씩 (무늬는 규칙에 쓰이지 않아 화면에 그리지 않는다)
   const SUITS = [["♠", "b"], ["♥", "r"], ["♦", "r"], ["♣", "b"]];
   const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
   const FX = { A: "+1 / +10", 4: "0 · 뒤집기", 9: "0 · 패스", 10: "−10", J: "+10", Q: "+10", K: "→ 99" };
@@ -339,9 +339,9 @@
     if (faceDown) { e.className = "card back"; e.innerHTML = `<div class="core">99</div>`; return e; }
     const sp = FX[card.r] && card.r !== "J" && card.r !== "Q";
     e.className = "card" + (sp ? " sp" : "");
-    e.innerHTML = `<span class="suit ${card.s[1]}">${card.s[0]}</span><span class="rank">${card.r}</span>` +
+    e.innerHTML = `<span class="rank${card.r.length > 1 ? " two" : ""}">${card.r}</span>` +
       `<span class="fx">${FX[card.r] || "+" + card.r}</span><span class="to"></span>`;
-    e.setAttribute("aria-label", `${card.s[0]} ${card.r}, ${FX[card.r] || "+" + card.r}`);
+    e.setAttribute("aria-label", `${card.r}, ${FX[card.r] || "+" + card.r}`);
     return e;
   }
 
@@ -465,7 +465,7 @@
     total = value;
     if (card.r === "K") sfx.max(); else if (card.r === "10") sfx.minus(); else if (card.r === "4") sfx.rev(); else if (card.r === "9") sfx.zero();
     const what = card.r === "K" ? "→ 99!" : card.r === "4" ? "0 · 순서 뒤집기" : card.r === "9" ? "0 · 패스" : card.r === "10" ? `−${prev - total}` : `+${total - prev}`;
-    say(`${who === "me" ? "나" : "CPU"}: ${card.s[0]}${card.r}  ${what}`, who === "me" ? "mine" : "cpu");
+    say(`${who === "me" ? "나" : "CPU"}: ${card.r}  ${what}`, who === "me" ? "mine" : "cpu");
     await rollTo(total);
     if (g !== gen) return;
     // 한 장 뽑기
