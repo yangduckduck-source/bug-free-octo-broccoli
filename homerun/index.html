@@ -1339,7 +1339,7 @@
     if (P && P.swung && P.delta != null && now - P.swingT < 1300) {
       const d = Math.round(P.delta), ad = Math.abs(d);
       const ballMiss = P.result === "whiff" && ad <= WIN.foul;     // 타이밍은 맞았는데 존에서 너무 빠진 공
-      const t = ballMiss ? "존 밖 공" : ad <= WIN.hr ? "완벽!" : d < 0 ? `빠름 ${ad}ms` : `늦음 ${ad}ms`;
+      const t = ballMiss ? "존 밖 공" : ad <= WIN.hr ? "완벽!" : d < 0 ? "빠름" : "늦음";
       c.font = "bold 18px sans-serif"; c.textAlign = "center"; c.fillStyle = ad <= WIN.hr ? "#ffcf3a" : "#ffffff";
       c.fillText(t, W / 2, 560);
     }
