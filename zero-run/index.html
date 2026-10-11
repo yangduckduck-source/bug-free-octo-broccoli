@@ -504,7 +504,7 @@
   }
 
   // ---------- 오프닝 ----------
-  // 처음 켤 때 한 번: POWER ON(첫 터치로 소리를 연다) → 제목 → 짧은 영상 → 프롤로그(타자) → 제목 화면.
+  // 창을 열 때마다: POWER ON(첫 터치로 소리를 연다) → 제목 → 짧은 영상 → 프롤로그(타자) → 제목 화면.
   // 누르면 언제든 건너뛴다. 제목 화면 왼쪽 아래 '오프닝'으로 다시 볼 수 있다.
   const PROLOGUE = [
     "시스템 시각 00:00:00.",
@@ -530,7 +530,6 @@
   PROLOGUE.forEach((ln, i) => { for (const ch of ln) TYPE_STREAM.push([i, ch]); for (let k = 0; k < (ln ? 3 : 7); k++) TYPE_STREAM.push([i, null]); });
   const OP_END = OP_TYPE + TYPE_STREAM.length / CPS;
   let op = null;
-  const opStore = () => store.get("zerorun.opened") === "1";
   function startOpening() {
     audio();
     state = "opening";
@@ -538,7 +537,6 @@
     $title.classList.add("hidden"); $over.classList.add("hidden"); $replay.classList.add("hidden");
   }
   function endOpening() {
-    store.set("zerorun.opened", "1");
     op = null;
     state = "title";
     reset();
@@ -1232,8 +1230,8 @@
   }
   reset();
   fit();
-  // 오프닝을 아직 안 봤으면 POWER ON 화면부터
-  if (!opStore()) { state = "power"; $title.classList.add("hidden"); } else $replay.classList.remove("hidden");
+  // 창을 새로 열 때마다(새로고침 포함) POWER ON → 오프닝부터. 판이 끝나 다시 할 때는 바로 시작한다.
+  state = "power"; $title.classList.add("hidden");
   $replay.addEventListener("pointerdown", e => e.stopPropagation());
   $replay.addEventListener("click", e => { e.stopPropagation(); $replay.blur(); startOpening(); });
   requestAnimationFrame(frame);
