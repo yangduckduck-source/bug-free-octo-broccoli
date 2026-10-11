@@ -271,202 +271,465 @@
   function rng(seed) { let a = seed * 9301 + 49297; return () => { a = (a * 1103515245 + 12345) % 2147483648; return a / 2147483648; }; }
 
   // ---- 공통 모양 ----
-  // 솔잎 덤불: 검은 뾰족 잎이 부채꼴로
-  function pineTuft(x, y, w, h, rnd) {
-    let d = `M${x} ${y}`;
-    const n = 7;
+  const f1 = v => Math.round(v * 10) / 10;
+  const poly = pts => "M" + pts.map(p => f1(p[0]) + " " + f1(p[1])).join(" L") + "Z";
+  const qpt = (a, c, b, u) => [(1 - u) * (1 - u) * a[0] + 2 * (1 - u) * u * c[0] + u * u * b[0], (1 - u) * (1 - u) * a[1] + 2 * (1 - u) * u * c[1] + u * u * b[1]];
+  // 가장자리가 빗살처럼 삐죽한 곡선 (솔잎 덩이용)
+  function comb(a, c, b, n, len, out) {
+    const pts = [];
     for (let i = 0; i < n; i++) {
-      const x0 = x + (w / n) * i, x1 = x0 + w / n;
-      const tip = y - h * (0.6 + rnd() * 0.4);
-      d += ` L${(x0 + x1) / 2 + (rnd() - 0.5) * 4} ${tip} L${x1} ${y - h * 0.15 * rnd()}`;
+      const u0 = i / n, u1 = (i + 0.5) / n, p0 = qpt(a, c, b, u0), p1 = qpt(a, c, b, u1), p2 = qpt(a, c, b, Math.min(1, u1 + 0.01));
+      const dx = p2[0] - p1[0], dy = p2[1] - p1[1], l = Math.hypot(dx, dy) || 1;
+      pts.push(p0, [p1[0] - dy / l * len * out, p1[1] + dx / l * len * out]);
     }
-    return Pt(d + ` L${x + w} ${y + 6} L${x} ${y + 6}Z`, BK) + Pt(`M${x + w * 0.3} ${y - h * 0.3} L${x + w * 0.5} ${y - h * 0.8} M${x + w * 0.65} ${y - h * 0.3} L${x + w * 0.75} ${y - h * 0.7}`, "none", WH, 0.8);
+    pts.push(b);
+    return pts;
   }
-  const flower5 = (x, y, r, petal, center = YL, edge = BK) =>
-    [0, 1, 2, 3, 4].map(i => C(x + Math.cos(i * 1.2566 - 1.57) * r * 0.58, y + Math.sin(i * 1.2566 - 1.57) * r * 0.58, r * 0.52, petal, ink(0.8))).join("") + C(x, y, r * 0.3, center, `stroke="${edge}" stroke-width=".6"`);
-  const branch = (d, w = 4) => Pt(d, "none", BK, w);
-  const scallop = (y, col = RD) => {     // 화투 위쪽의 붉은 구름(가스미)
-    let d = `M0 0 H90 V${y}`;
-    for (let x = 90; x > 0; x -= 15) d += ` Q${x - 7.5} ${y + 9} ${x - 15} ${y}`;
-    return Pt(d + "Z", col, BK, 1);
-  };
-  const hill = (top, col = BK) => Pt(`M0 140 L0 ${top + 34} Q45 ${top - 10} 90 ${top + 34} L90 140Z`, col);
-  const leafStrand = (x, y0, len, col, rnd, swirl) => {
-    let s = Pt(`M${x} ${y0} Q${x + 6} ${y0 + len / 2} ${x - 3} ${y0 + len}`, "none", col, 1.6);
-    for (let y = y0 + 6; y < y0 + len; y += 8) {
-      const side = (y / 8) % 2 ? 1 : -1;
-      s += E(x + side * 4.5, y, 4.4, 1.9, col, side * 35);
-    }
-    if (swirl) s += Pt(`M${x + 6} ${y0 + len - 4} a4 4 0 1 1 4 4`, "none", BK, 1);
-    return s;
-  };
-  const iris = (x, y, s = 1) => Pt(`M${x} ${y} q${-9 * s} ${-3 * s} ${-8 * s} ${-12 * s} q${5 * s} ${2 * s} ${8 * s} ${8 * s}Z`, BL, BK, .8) +
-    Pt(`M${x} ${y} q${9 * s} ${-3 * s} ${8 * s} ${-12 * s} q${-5 * s} ${2 * s} ${-8 * s} ${8 * s}Z`, BL, BK, .8) +
-    Pt(`M${x} ${y} q${-3 * s} ${-10 * s} 0 ${-16 * s} q${3 * s} ${6 * s} 0 ${16 * s}Z`, BL, BK, .8) + E(x, y + 3 * s, 3 * s, 4 * s, BL, 0, ink(.6)) + C(x, y - 3 * s, 1.4 * s, YL);
-  const sword = (x, y, h, lean) => Pt(`M${x} ${y} Q${x + lean * 0.5} ${y - h * 0.6} ${x + lean} ${y - h} Q${x + lean * 0.3 + 3} ${y - h * 0.5} ${x + 5} ${y}Z`, BK);
-  const peony = (x, y, r, col) => C(x, y, r, col, ink()) +
-    Pt(`M${x - r * 0.75} ${y - r * 0.1} Q${x} ${y - r * 0.95} ${x + r * 0.75} ${y - r * 0.1}`, "none", BK, 1) +
-    Pt(`M${x - r * 0.5} ${y + r * 0.35} Q${x} ${y - r * 0.35} ${x + r * 0.5} ${y + r * 0.35}`, "none", BK, 1) + C(x, y + r * 0.15, r * 0.22, YL, ink(.6));
-  const clover = (x, y, len, rnd) => {
-    let s = Pt(`M${x} ${y} q${(rnd() - 0.5) * 10} ${-len / 2} ${(rnd() - 0.5) * 6} ${-len}`, "none", RD, 1.4);
-    for (let i = 1; i < 6; i++) { const yy = y - (len / 6) * i, xx = x + (rnd() - 0.5) * 3; s += E(xx - 3.5, yy, 3.2, 1.6, RD, -30) + E(xx + 3.5, yy - 1, 3.2, 1.6, RD, 30); }
-    return s;
-  };
-  const maple = (x, y, r, f) => {
+  // 솔: 끝이 뾰족한 검은 잎 덩이, 가장자리 빗살, 꼭대기에 노란 솔눈
+  function pine(cx, base, w, h, lean = 0) {
+    const L = [cx - w * 0.42, base + 3], T0 = [cx + lean, base - h], Rt = [cx + w * 0.42, base + 3];
+    const pts = comb(L, [cx - w * 0.72 + lean * 0.2, base - h * 0.72], T0, 20, 1.7, 1).concat(comb(T0, [cx + w * 0.72 + lean * 0.2, base - h * 0.72], Rt, 20, 1.7, 1).slice(1));
+    let s = Pt(poly(pts), BK);
     let d = "";
-    for (let i = 0; i < 10; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.42 : r;
-      d += (i ? "L" : "M") + (x + Math.cos(a) * rr).toFixed(1) + " " + (y + Math.sin(a) * rr).toFixed(1);
-    }
-    return Pt(d + "Z", f, BK, 0.9);
-  };
-  const mum = (x, y, r, outer, inner) => {
+    for (let i = -4; i <= 4; i++) d += `M${f1(cx + i * w * 0.06)} ${base + 2} Q${f1(cx + i * w * 0.16 + lean * 0.3)} ${f1(base - h * 0.55)} ${f1(cx + lean * 0.95 + i * 0.8)} ${f1(base - h * 0.93)} `;
+    s += Pt(d, "none", "#2c2c2c", 0.45);
+    return s + E(cx + lean, base - h - 1.6, 1.6, 2.4, YL, 0, ink(0.5));
+  }
+  // 매화: 둥근 꽃잎 다섯 + 노란 꽃술
+  function plum(x, y, r) {
     let s = "";
-    for (let i = 0; i < 16; i++) s += E(x + Math.cos(i * 0.3927) * r * 0.62, y + Math.sin(i * 0.3927) * r * 0.62, r * 0.4, r * 0.15, outer, i * 22.5, ink(.5));
-    for (let i = 0; i < 10; i++) s += E(x + Math.cos(i * 0.628) * r * 0.3, y + Math.sin(i * 0.628) * r * 0.3, r * 0.22, r * 0.1, inner, i * 36);
-    return s + C(x, y, r * 0.14, BK);
-  };
-  const ribbon = rib => {
-    const col = rib === "cheong" ? BL : rib === "hong" ? RD : YL;
-    let s = `<g transform="rotate(-22 30 50)">` + R(20, 4, 20, 82, col, ink(1.2)) + Pt("M20 86 L26 93 L30 86 L34 93 L40 86", col, BK, 1.2);
-    if (rib === "hong") s += T(30, 40, "홍", 15, BK) + T(30, 60, "단", 15, BK);
-    if (rib === "cheong") s += T(30, 40, "청", 15, YL) + T(30, 60, "단", 15, YL);
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 1.2566; s += C(f1(x + Math.cos(a) * r * 0.55), f1(y + Math.sin(a) * r * 0.55), f1(r * 0.52), RD, ink(0.6)); }
+    s += C(x, y, f1(r * 0.36), YL, ink(0.4));
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 1.2566 + 0.6; s += C(f1(x + Math.cos(a) * r * 0.24), f1(y + Math.sin(a) * r * 0.24), 0.55, RD); }
+    return s;
+  }
+  const bud = (x, y, r = 2.6) => C(x, y, r, RD, ink(0.6)) + Pt(`M${f1(x - r * 0.4)} ${f1(y)} L${f1(x + r * 0.4)} ${f1(y)}`, "none", BK, 0.4);
+  // 벚꽃: 끝이 오목한 꽃잎 다섯, 가운데 까만 꽃술
+  function sakura(x, y, r, col, rot = 0) {
+    const p = `M0 0 C${f1(-r * 0.6)} ${f1(-r * 0.25)} ${f1(-r * 0.62)} ${f1(-r * 0.9)} ${f1(-r * 0.2)} ${f1(-r)} L0 ${f1(-r * 0.78)} L${f1(r * 0.2)} ${f1(-r)} C${f1(r * 0.62)} ${f1(-r * 0.9)} ${f1(r * 0.6)} ${f1(-r * 0.25)} 0 0Z`;
+    let s = `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot})">`;
+    for (let i = 0; i < 5; i++) s += `<path d="${p}" fill="${col}" stroke="${BK}" stroke-width=".6" transform="rotate(${i * 72})"/>`;
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 1.2566; s += Pt(`M0 0 L${f1(Math.cos(a) * r * 0.42)} ${f1(Math.sin(a) * r * 0.42)}`, "none", col === BK ? RD : BK, 0.7); }
+    return s + C(0, 0, f1(r * 0.16), col === BK ? RD : BK) + "</g>";
+  }
+  // 작은 검은 잎 (벚꽃·매화 사이)
+  const leaf = (x, y, l, rot, col = BK) => `<path d="M0 0 Q${f1(l * 0.5)} ${f1(-l * 0.32)} ${f1(l)} 0 Q${f1(l * 0.5)} ${f1(l * 0.32)} 0 0Z" fill="${col}" stroke="${BK}" stroke-width=".5" transform="translate(${f1(x)} ${f1(y)}) rotate(${rot})"/>`;
+  // 모란: 겹겹이 물결진 꽃잎
+  function peony(x, y, r, col) {
+    const ruff = (rr, n, amp, rot) => { let d = ""; for (let k = 0; k <= n * 2; k++) { const a = rot + k / (n * 2) * 6.283, q = k % 2 ? rr * (1 - amp) : rr; d += (k ? "L" : "M") + f1(x + Math.cos(a) * q) + " " + f1(y + Math.sin(a) * q * 0.92); } return d + "Z"; };
+    let s = Pt(ruff(r, 11, 0.13, 0.2), col, BK, 0.8);
+    for (let k = 0; k < 7; k++) { const a = k * 0.9 + 0.3; s += Pt(`M${f1(x + Math.cos(a) * r * 0.25)} ${f1(y + Math.sin(a) * r * 0.25)} Q${f1(x + Math.cos(a + 0.35) * r * 0.7)} ${f1(y + Math.sin(a + 0.35) * r * 0.66)} ${f1(x + Math.cos(a + 0.6) * r * 0.88)} ${f1(y + Math.sin(a + 0.6) * r * 0.8)}`, "none", BK, 0.6); }
+    s += Pt(ruff(r * 0.5, 7, 0.18, 0.5), col, BK, 0.7);
+    for (let k = 0; k < 10; k++) { const a = k * 0.63; s += C(f1(x + Math.cos(a) * r * 0.2), f1(y + Math.sin(a) * r * 0.2), f1(Math.max(0.8, r * 0.06)), YL, ink(0.3)); }
+    return s + C(x, y, f1(r * 0.08), YL, ink(0.3));
+  }
+  // 덩어리진 검은 잎 (모란·국화)
+  function blob(x, y, r, rot = 0, col = BK) {
+    let s = `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${rot})">`;
+    for (const [dx, dy, k] of [[0, 0, 0.6], [-0.58, -0.12, 0.42], [0.58, -0.2, 0.42], [-0.34, 0.44, 0.4], [0.36, 0.42, 0.38], [0.05, -0.58, 0.4], [-0.62, 0.3, 0.28], [0.66, 0.24, 0.26]]) s += C(f1(dx * r), f1(dy * r), f1(k * r), col);
     return s + "</g>";
-  };
+  }
+  // 국화 (활짝 핀 둥근 꽃): 바깥 노랑·빨강 꽃잎, 안쪽 빨강
+  function mum(x, y, r, a = YL, b = RD) {
+    let s = "";
+    for (let i = 0; i < 22; i++) { const t = i / 22 * 6.283; s += E(f1(x + Math.cos(t) * r * 0.6), f1(y + Math.sin(t) * r * 0.6), f1(r * 0.42), f1(r * 0.13), i % 2 ? a : b, f1(t * 57.3), ink(0.4)); }
+    for (let i = 0; i < 14; i++) { const t = i / 14 * 6.283 + 0.2; s += E(f1(x + Math.cos(t) * r * 0.3), f1(y + Math.sin(t) * r * 0.3), f1(r * 0.28), f1(r * 0.1), i % 2 ? b : a, f1(t * 57.3), ink(0.35)); }
+    return s + C(x, y, f1(r * 0.12), b, ink(0.4));
+  }
+  // 국화 (부채꼴로 핀 꽃): 줄기 끝에서 위로 퍼진다
+  function fanMum(x, y, r, stem) {
+    let s = stem ? Pt(`M${x} ${y} L${x} ${y + stem}`, "none", BK, 2.6) : "";
+    for (let i = 0; i <= 12; i++) { const t = Math.PI + i / 12 * Math.PI; s += E(f1(x + Math.cos(t) * r * 0.62), f1(y + Math.sin(t) * r * 0.62), f1(r * 0.45), f1(r * 0.12), YL, f1(t * 57.3), ink(0.45)); }
+    for (let i = 0; i <= 9; i++) { const t = Math.PI + i / 9 * Math.PI; s += E(f1(x + Math.cos(t) * r * 0.32), f1(y + Math.sin(t) * r * 0.32), f1(r * 0.3), f1(r * 0.1), RD, f1(t * 57.3), ink(0.4)); }
+    return s + E(x, y + 1, f1(r * 0.3), f1(r * 0.14), BK);
+  }
+  // 단풍잎: 다섯 갈래, 갈래마다 잔 톱니
+  function maple(x, y, r, col, rot = 0) {
+    const pts = [];
+    for (let i = 0; i < 5; i++) {
+      const a = -Math.PI / 2 + i * 1.2566, k = i === 0 ? 1 : i === 1 || i === 4 ? 0.95 : 0.78;
+      for (const [da, rr] of [[-0.63, 0.36], [-0.36, 0.8], [-0.27, 0.66], [-0.16, 0.9], [-0.08, 0.8], [0, 1.02], [0.08, 0.8], [0.16, 0.9], [0.27, 0.66], [0.36, 0.8]])
+        pts.push([Math.cos(a + da) * r * rr * (rr > 0.5 ? k : 1), Math.sin(a + da) * r * rr * (rr > 0.5 ? k : 1)]);
+    }
+    let vein = ""; for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + i * 1.2566; vein += `M0 0 L${f1(Math.cos(a) * r * 0.7)} ${f1(Math.sin(a) * r * 0.7)} `; }
+    return `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${f1(rot)})">` + Pt(poly(pts), col, BK, 0.7) + Pt(vein, "none", col === BK ? "#444" : BK, 0.5) + Pt(`M0 ${f1(r * 0.3)} L${f1(r * 0.1)} ${f1(r * 0.8)}`, "none", BK, 0.8) + "</g>";
+  }
+  // 잎 다발: 끝이 뾰족한 잎 서넛 (모란·국화 잎)
+  function leaves(x, y, r, rot = 0, col = BK) {
+    r *= 1.7;
+    let s = `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${f1(rot)})">`;
+    for (const [a, k] of [[-60, 0.85], [-20, 1], [20, 0.95], [60, 0.8], [180, 0.6]]) s += `<path d="M0 0 C${f1(r * 0.3)} ${f1(-r * 0.42 * k)} ${f1(r * 0.8 * k)} ${f1(-r * 0.36 * k)} ${f1(r * 1.1 * k)} 0 C${f1(r * 0.8 * k)} ${f1(r * 0.36 * k)} ${f1(r * 0.3)} ${f1(r * 0.42 * k)} 0 0Z" fill="${col}" transform="rotate(${a - 90})"/>`;
+    return s + "</g>";
+  }
+  const cleaf = (x, y, l, rot, col) => `<path d="M0 0 Q${f1(l * 0.45)} ${f1(-l * 0.5)} ${f1(l)} 0 Q${f1(l * 0.45)} ${f1(l * 0.5)} 0 0Z" fill="${col}" stroke="${BK}" stroke-width=".45" transform="translate(${f1(x)} ${f1(y)}) rotate(${f1(rot)})"/>`;
+  // 싸리 가지: 가는 줄기에 뾰족한 잎이 짝지어 붙는다
+  function sprig(x0, y0, x1, y1, n, rnd, black = 0.2, lw = 0.9) {
+    const cx = (x0 + x1) / 2 + (rnd() - 0.5) * 10, cy = (y0 + y1) / 2;
+    let s = Pt(`M${f1(x0)} ${f1(y0)} Q${f1(cx)} ${f1(cy)} ${f1(x1)} ${f1(y1)}`, "none", BK, lw);
+    for (let i = 1; i <= n; i++) {
+      const u = i / (n + 0.4), p = qpt([x0, y0], [cx, cy], [x1, y1], u), q = qpt([x0, y0], [cx, cy], [x1, y1], Math.min(1, u + 0.02));
+      const ang = Math.atan2(q[1] - p[1], q[0] - p[0]) * 57.3, l = 7 * (1 - u * 0.3);
+      const col = rnd() < black ? BK : RD;
+      s += cleaf(p[0], p[1], l, ang - 55, col) + cleaf(p[0], p[1], l, ang + 55, rnd() < black ? BK : RD);
+    }
+    return s + cleaf(x1, y1, 6.5, Math.atan2(y1 - cy, x1 - cx) * 57.3, RD);
+  }
+  // 싸리 덤불: 줄기 하나에 곁가지 셋
+  function bush(x, base, h, lean, rnd, black = 0.22) {
+    const tx = x + lean, ty = base - h;
+    let s = sprig(x, base, tx, ty, 4, rnd, black, 1);
+    for (const [u, dir] of [[0.35, -1], [0.55, 1], [0.75, -1]]) {
+      const px = x + (tx - x) * u, py = base + (ty - base) * u;
+      s += sprig(px, py, px + dir * (10 + rnd() * 6), py - 14 - rnd() * 8, 3, rnd, black, 0.8);
+    }
+    return s;
+  }
+  // 흑싸리 줄기: 둥근 검은 잎이 번갈아, 끝은 동그랗게 말린다
+  function fern(x0, y0, x1, y1, n, curl = 0) {
+    const cx = (x0 + x1) / 2 + (x1 - x0) * 0.3, cy = (y0 + y1) / 2;
+    let s = Pt(`M${f1(x0)} ${f1(y0)} Q${f1(cx)} ${f1(cy)} ${f1(x1)} ${f1(y1)}`, "none", BK, 0.9);
+    for (let i = 1; i <= n; i++) {
+      const u = i / (n + 0.6), p = qpt([x0, y0], [cx, cy], [x1, y1], u), q = qpt([x0, y0], [cx, cy], [x1, y1], Math.min(1, u + 0.02));
+      const ang = Math.atan2(q[1] - p[1], q[0] - p[0]) * 57.3, side = i % 2 ? 1 : -1;
+      s += `<path d="M0 0 Q3.4 ${f1(side * 2.4)} 3.4 ${f1(side * 6)} Q1 ${f1(side * 10.5)} -2.6 ${f1(side * 7.6)} Q-3.6 ${f1(side * 3.4)} 0 0Z" fill="${BK}" transform="translate(${f1(p[0])} ${f1(p[1])}) rotate(${f1(ang - side * 55)})"/>`;
+    }
+    if (curl) s += Pt(`M${f1(x1)} ${f1(y1)} c${curl * 4} -3 ${curl * 7} 3 ${curl * 4} 6 c${curl * -3} 2 ${curl * -6} -1 ${curl * -4} -4 c${curl * 1} -1.5 ${curl * 3} -1 ${curl * 3} 1`, "none", BK, 0.8);
+    return s;
+  }
+  // 흑싸리 포기: 큰 줄기에 곁줄기
+  function fernTree(x, base, h, lean) {
+    let s = fern(x, base, x + lean, base - h, 5);
+    s += fern(x + lean * 0.3, base - h * 0.35, x + lean * 0.3 - 10, base - h * 0.75, 3) + fern(x + lean * 0.5, base - h * 0.55, x + lean * 0.5 + 10, base - h * 0.92, 3);
+    return s;
+  }
+  // 소용돌이 덩굴손
+  const swirl = (x, y, r, dir = 1) => Pt(`M${x} ${y} a${r} ${r} 0 1 ${dir > 0 ? 1 : 0} ${f1(r * 1.6 * dir)} ${f1(r * 0.6)} a${f1(r * 0.7)} ${f1(r * 0.7)} 0 1 ${dir > 0 ? 1 : 0} ${f1(-r * 0.9 * dir)} ${f1(-r * 0.7)} a${f1(r * 0.35)} ${f1(r * 0.35)} 0 1 ${dir > 0 ? 1 : 0} ${f1(r * 0.4 * dir)} ${f1(r * 0.3)}`, "none", BK, 0.8);
+  // 붓꽃
+  function iris(x, y, s = 1) {
+    const g = (d, f) => Pt(d, f, BK, 0.7);
+    return `<g transform="translate(${x} ${y}) scale(${s})">` +
+      g("M0 0 C-4 -2 -12 -4 -16 0 C-18 4 -14 10 -8 10 C-4 9 -1 5 0 2Z", BL) + g("M0 0 C4 -2 12 -4 16 0 C18 4 14 10 8 10 C4 9 1 5 0 2Z", BL) +
+      g("M-1 -1 C-6 -6 -6 -12 -2 -16 C0 -12 0 -6 1 -1Z", BL) + g("M1 -1 C6 -6 6 -12 2 -16 C0 -12 0 -6 -1 -1Z", BL) +
+      g("M0 1 C-3 6 -3 11 0 13 C3 11 3 6 0 1Z", BL) +
+      Pt("M-2 1 L-11 3 M2 1 L11 3", "none", YL, 1.6) + Pt("M0 -1 L0 -9", "none", YL, 1.2) + "</g>";
+  }
+  const blade = (x, base, h, lean, w = 8) => Pt(`M${x} ${base} C${f1(x + lean * 0.1)} ${f1(base - h * 0.5)} ${f1(x + lean * 0.5)} ${f1(base - h * 0.85)} ${f1(x + lean)} ${f1(base - h)} C${f1(x + lean * 0.5 + w * 0.7)} ${f1(base - h * 0.75)} ${f1(x + w * 0.9)} ${f1(base - h * 0.45)} ${f1(x + w)} ${base}Z`, BK);
+  const star = (x, y, r, col = BL) => { const pts = []; for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * 0.45 : r; pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]); } return Pt(poly(pts), col, BK, 0.7); };
+  // 오동 꽃대: 가운데 줄기에 작은 검은 봉오리가 짝지어
+  function budStalk(x0, y0, x1, y1, n) {
+    let s = Pt(`M${x0} ${y0} Q${f1((x0 + x1) / 2 + 3)} ${f1((y0 + y1) / 2)} ${x1} ${y1}`, "none", BK, 1);
+    for (let i = 1; i <= n; i++) {
+      const u = i / (n + 0.3), p = qpt([x0, y0], [(x0 + x1) / 2 + 3, (y0 + y1) / 2], [x1, y1], u);
+      s += Pt(`M${f1(p[0])} ${f1(p[1])} l-4 -3 M${f1(p[0])} ${f1(p[1])} l4 -3`, "none", BK, 0.8) + E(f1(p[0] - 5), f1(p[1] - 4), 3, 1.9, BK, -40) + E(f1(p[0] + 5), f1(p[1] - 4), 3, 1.9, BK, 40);
+    }
+    return s + E(x1, f1(y1 - 2), 1.6, 2.4, BK);
+  }
+  // 오동잎: 가운데가 깊고 양쪽이 둥근 큰 검은 잎
+  const paulLeaf = (x, y, w, h) => Pt(`M${x} ${y} C${f1(x - w * 0.15)} ${f1(y - h * 0.5)} ${f1(x - w * 0.5)} ${f1(y - h * 0.45)} ${f1(x - w * 0.5)} ${f1(y)} C${f1(x - w * 0.5)} ${f1(y + h * 0.42)} ${f1(x - w * 0.22)} ${f1(y + h * 0.55)} ${f1(x - w * 0.08)} ${f1(y + h * 0.4)} L${x} ${f1(y + h * 0.6)} L${f1(x + w * 0.08)} ${f1(y + h * 0.4)} C${f1(x + w * 0.22)} ${f1(y + h * 0.55)} ${f1(x + w * 0.5)} ${f1(y + h * 0.42)} ${f1(x + w * 0.5)} ${f1(y)} C${f1(x + w * 0.5)} ${f1(y - h * 0.45)} ${f1(x + w * 0.15)} ${f1(y - h * 0.5)} ${x} ${y}Z`, BK);
+  // 버들가지: 굵게 휘어 내려오는 검은 잎 줄기
+  function willow(x, top, len, bend, w) {
+    const ex = x + bend, ey = top + len;
+    let s = Pt(`M${f1(x - w / 2)} ${top} C${f1(x - w / 2 + bend * 0.2)} ${f1(top + len * 0.4)} ${f1(ex - w * 0.6)} ${f1(top + len * 0.7)} ${f1(ex)} ${f1(ey)} C${f1(ex + w * 0.4)} ${f1(top + len * 0.7)} ${f1(x + w / 2 + bend * 0.4)} ${f1(top + len * 0.4)} ${f1(x + w / 2)} ${top}Z`, BK);
+    let d = "";
+    for (let k = 1; k < 8; k++) { const u = k / 8, px = x + bend * u * u - w * 0.5 * (1 - u), py = top + len * u; d += `M${f1(px)} ${f1(py)} l${f1(-3 - w * 0.12)} ${f1(2 + u * 2)} `; const qx = x + bend * u * u + w * 0.5 * (1 - u); d += `M${f1(qx)} ${f1(py)} l${f1(3 + w * 0.12)} ${f1(2 + u * 2)} `; }
+    return s + Pt(d, "none", BK, 0.8);
+  }
+  // 붉은 구름 (화투 가장자리의 둥근 띠)
+  function cloud(x0, x1, y, r = 6, col = RD) {
+    let d = `M${x0} 0 L${x0} ${y}`;
+    for (let x = x0; x < x1; x += r * 2) d += ` a${r} ${r} 0 0 0 ${r * 2} 0`;
+    return Pt(d + ` L${x1} 0Z`, col, BK, 0.8);
+  }
+  function cloudV(y0, y1, x, r = 6, col = RD) {      // 오른쪽 세로 구름
+    let d = `M90 ${y0} L${x} ${y0}`;
+    for (let y = y0; y < y1; y += r * 2) d += ` a${r} ${r} 0 0 0 0 ${r * 2}`;
+    return Pt(d + ` L90 ${y1}Z`, col, BK, 0.8);
+  }
+  const hill = (top, col = BK, skew = 0) => Pt(`M0 140 L0 ${top + 14 - skew} Q${45 + skew * 2} ${top - 12} 90 ${top + 14 + skew} L90 140Z`, col);
+  // 띠: 비스듬히 걸린 리본. 홍단(빨강·검은 글씨), 청단(파랑·노란 글씨), 초단·비띠(노랑)
+  function ribbon(rib, cx, cy, ang, len = 84, w = 17) {
+    const col = rib === "cheong" ? BL : rib === "hong" ? RD : YL;
+    let s = `<g transform="translate(${cx} ${cy}) rotate(${ang})">` + Pt(`M${-w / 2} ${-len / 2 + 3} L${w / 2} ${-len / 2} L${w / 2} ${len / 2} L${-w / 2} ${len / 2 - 2}Z`, col, BK, 0.9);
+    if (rib === "hong") s += T(0, -len * 0.12, "홍", 13, BK) + T(0, len * 0.22, "단", 13, BK);
+    if (rib === "cheong") s += T(0, -len * 0.12, "청", 13, YL) + T(0, len * 0.22, "단", 13, YL);
+    return s + "</g>";
+  }
   const gwangMark = (x, y) => C(x, y, 8.5, RD, `stroke="${WH}" stroke-width="1.6"`) + T(x, y + 4.3, "광", 11, WH);
+  const g$ = (x, y, sc, body, rot = 0, flip = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc * flip} ${sc})">${body}</g>`;
+
+  // ---- 동물·사람 ----
+  const CRANE = () =>
+    Pt("M10 98 C2 86 6 66 20 60 C32 56 40 64 38 76 C36 88 26 98 10 98Z", WH, BK, 1.1) +
+    Pt("M10 98 L0 106 L6 106 L2 114 L12 104 L10 112 L18 98Z", BK) +
+    Pt("M14 92 C18 84 24 78 34 74 M12 86 C16 78 22 72 32 68 M18 96 C24 90 30 86 36 82", "none", BK, 0.9) +
+    Pt("M20 90 l3 -4 l2 3 l3 -4 l2 3 l3 -4", "none", BK, 1.4) +
+    Pt("M28 60 C34 50 30 40 36 34 C42 28 50 28 56 29", "none", BK, 4.2) + Pt("M28 60 C34 50 30 40 36 34 C42 28 50 28 56 29", "none", WH, 2.4) +
+    E(57, 29, 3.8, 3, WH, -15, ink(0.9)) + E(56, 26.8, 2.3, 1.5, RD, -15) + C(58.4, 28.6, 0.7, BK) +
+    Pt("M60.5 28 L71 21", "none", BK, 1.4) + C(71, 21, 1.6, BK) +
+    Pt("M18 96 L16 132 M24 96 L27 132 M16 132 L11 136 M16 132 L20 136 M27 132 L23 136 M27 132 L32 136", "none", BK, 1.1);
+  const WARBLER = () =>
+    Pt("M-30 22 L-42 30 L-30 30Z", BK) +
+    Pt("M-30 24 C-22 6 -2 -8 18 -12 C26 -14 32 -10 32 -4 C30 6 18 18 2 24 C-10 28 -22 28 -30 24Z", YL, BK, 1) +
+    Pt("M-26 22 C-16 8 0 -2 16 -4 C8 6 -4 16 -26 22Z", BK) + Pt("M-18 18 C-8 10 2 4 12 0 M-14 20 C-4 14 4 8 12 4", "none", YL, 0.9) +
+    Pt("M14 -12 C20 -16 30 -14 32 -6 L22 -4 C18 -8 14 -8 14 -12Z", BK) + C(24, -9, 1.6, WH) + C(24.4, -9, 0.8, BK) +
+    Pt("M32 -6 L42 -4 L32 -1Z", YL, BK, 0.7) + Pt("M2 24 L-2 34 M8 22 L6 34", "none", BK, 1.4);
+  const CUCKOO = () =>
+    Pt("M-10 -4 C-20 -22 -36 -30 -44 -26 C-36 -18 -24 -8 -12 2Z", YL, BK, 1) + Pt("M-14 -14 L-30 -22 M-12 -8 L-30 -16 M-14 -20 L-26 -26", "none", BK, 0.7) +
+    Pt("M-12 0 C-2 -8 16 -10 26 -4 C30 0 30 4 24 6 C12 10 -2 10 -12 4Z", YL, BK, 1) +
+    Pt("M-4 2 C8 -8 22 -18 36 -16 C30 -6 18 4 4 8Z", YL, BK, 1) + Pt("M4 2 L22 -10 M8 4 L28 -8 M12 6 L32 -12", "none", BK, 0.7) +
+    C(28, -2, 4.6, YL, ink(1)) + C(29.4, -3.2, 0.9, BK) + Pt("M32 -1 L39 1 L32 2Z", BK) +
+    Pt("M-12 2 L-26 10 L-16 4 L-26 16 L-12 6Z", BK) + Pt("M0 9 L-2 14 M6 9 L5 14", "none", BK, 0.9);
+  const BOAR = () =>
+    Pt("M-34 8 C-38 -6 -28 -16 -12 -18 C0 -20 12 -22 22 -26 C28 -30 34 -28 38 -24 L46 -22 C48 -20 48 -16 44 -15 L38 -14 C36 -6 30 2 22 6 C10 14 -10 18 -26 16 C-30 14 -33 12 -34 8Z", YL, BK, 1.1) +
+    Pt("M-28 -14 l2 -4 l2 4 l2 -5 l2 5 l2 -5 l2 5 l2 -5 l2 5 l2 -5 l2 4 l2 -5 l2 4 l2 -5 l2 4 l2 -5 l2 4", YL, BK, 0.8) +
+    Pt("M-26 -10 L-22 8 M-18 -14 L-14 10 M-10 -15 L-7 10 M-2 -16 L0 8 M6 -17 L8 4 M14 -19 L15 0 M22 -22 L22 -8 M-30 -2 L-26 10", "none", BK, 1.1) +
+    Pt("M30 -28 L30 -36 L35 -28", YL, BK, 0.8) + C(36, -22, 1.4, BK) + C(46, -18.5, 1, BK) + Pt("M40 -14 L44 -10", "none", WH, 1.4) +
+    Pt("M-28 14 L-38 26 L-33 28 L-22 16 M-16 16 L-20 30 L-14 30 L-10 16 M14 10 L22 22 L27 18 L18 6 M22 4 L36 6 L36 0 L28 -2", YL, BK, 1) +
+    Pt("M-34 6 C-42 2 -42 -6 -38 -8", "none", BK, 1.2);
+  const GOOSE = col =>
+    Pt("M-4 -2 C-10 -10 -12 -18 -8 -24 C0 -16 6 -8 6 -1Z", col, BK, 0.8) + Pt("M-2 -4 L-8 -18 M2 -3 L-4 -16", "none", BK, 0.6) +
+    Pt("M-16 2 C-6 -4 8 -4 16 -2 C20 0 18 4 12 4 C2 6 -8 6 -16 2Z", col, BK, 0.9) +
+    Pt("M-2 2 C-10 10 -20 14 -28 12 C-20 6 -12 2 -6 0Z", col, BK, 0.8) + Pt("M-10 6 L-22 11 M-6 4 L-18 8", "none", BK, 0.6) +
+    Pt("M14 -1 C18 -6 22 -8 26 -8", "none", BK, 3) + Pt("M14 -1 C18 -6 22 -8 26 -8", "none", col, 1.6) +
+    C(27, -8.5, 2.4, col, ink(0.8)) + Pt("M29 -9 L34 -8 L29 -7Z", YL, BK, 0.5) + C(27.6, -9, 0.5, BK) +
+    Pt("M-16 2 L-24 0 L-22 6Z", BK);
+  const BUTTERFLY = () =>
+    Pt("M0 0 C-4 -10 -16 -14 -20 -8 C-22 -2 -14 2 0 1Z", YL, BK, 0.8) + Pt("M0 1 C-8 4 -14 10 -10 14 C-6 16 -2 10 0 3Z", YL, BK, 0.8) +
+    Pt("M0 0 C4 -10 16 -14 20 -8 C22 -2 14 2 0 1Z", YL, BK, 0.8) + Pt("M0 1 C8 4 14 10 10 14 C6 16 2 10 0 3Z", YL, BK, 0.8) +
+    C(-12, -6, 2, RD, ink(0.4)) + C(12, -6, 2, RD, ink(0.4)) + C(-8, 9, 1.4, RD) + C(8, 9, 1.4, RD) + C(-17, -7, 1, BK) + C(17, -7, 1, BK) +
+    E(0, 3, 1.4, 7, BK) + Pt("M0 -4 L-4 -12 M0 -4 L4 -12", "none", BK, 0.6);
+  const DEER = () =>
+    Pt("M-12 -6 C-14 -16 -10 -24 -6 -30 L0 -34 C4 -36 8 -34 10 -30 L6 -26 C2 -22 0 -16 2 -6 C14 -8 26 -6 28 4 C30 12 26 18 18 18 L-8 18 C-14 14 -14 6 -12 -6Z", YL, BK, 1) +
+    Pt("M-4 -34 L-8 -46 L-6 -40 L-12 -44 L-8 -38 M0 -34 L2 -48 L1 -40 L6 -44 L2 -38", "none", BK, 1.1) +
+    E(-6, -36, 3, 1.6, YL, -30, ink(0.7)) + C(4, -30, 1, BK) + Pt("M10 -30 L13 -29", "none", BK, 1.2) +
+    Pt("M-8 18 L-10 40 L-7 40 L-4 20 M-2 18 L0 40 L3 40 L3 20 M12 18 L16 40 L19 40 L17 18 M18 16 L26 38 L29 37 L23 14", YL, BK, 1) +
+    Pt("M28 2 L32 -2 L30 6Z", YL, BK, 0.8) +
+    Pt("M-2 0 L2 2 M4 -2 L8 0 M10 0 L14 2 M16 0 L20 4 M4 6 L8 8 M12 8 L16 10 M-6 6 L-2 8 M20 8 L24 12", "none", BK, 0.9);
+  const SAKE = () =>
+    Pt("M-24 -4 C-12 2 12 2 26 -6 C22 6 14 12 0 12 C-12 12 -20 6 -24 -4Z", RD, BK, 1) + E(1, -3, 25, 4.4, RD, -6, ink(0.9)) +
+    E(1, -3.4, 22, 3, "#c8101a", -6) + R(-6, 12, 14, 4, RD, ink(0.8)) +
+    T(0, 9, "壽", 9, YL, `transform="rotate(-6)"`);
+  const ROOSTER = () =>
+    Pt("M-6 14 C-14 6 -14 -8 -4 -14 C4 -18 14 -14 16 -4 C18 8 10 16 -6 14Z", RD, BK, 1) +
+    Pt("M-8 -12 L-10 -22 L-4 -16 L-2 -26 L2 -16 L6 -24 L8 -14Z", RD, BK, 1) +
+    Pt("M14 -6 L24 -2 L14 2Z", YL, BK, 0.8) + C(8, -6, 1.8, WH, ink(0.6)) + C(8.4, -6, 0.9, BK) +
+    Pt("M10 4 C14 10 12 16 8 18 C6 12 6 8 10 4Z", RD, BK, 0.8) +
+    Pt("M-10 10 C-18 16 -18 26 -10 30 C-4 24 -2 18 -10 10Z", YL, BK, 0.9) + Pt("M-12 16 L-8 26 M-14 20 L-11 28", "none", BK, 0.6) +
+    Pt("M-6 14 C0 20 6 22 12 20 M-4 8 C2 12 8 12 12 10", "none", BK, 0.9);
+  const MAN = () =>
+    Pt("M-8 -18 C-14 -4 -16 20 -18 44 L14 44 C12 20 10 -4 6 -18 C2 -22 -4 -22 -8 -18Z", RD, BK, 1) +
+    Pt("M-6 -10 L-2 40 M2 -12 L6 30 M-12 10 L-14 40", "none", "#9a0c12", 0.8) +
+    Pt("M6 -12 L16 -2 L20 -6", "none", BK, 2.2) + C(-1, -24, 5.6, "#f6d7b3", ink(0.9)) + Pt("M-7 -28 L5 -28 L2 -34 L-4 -34Z", BK) + Pt("M-10 -28 L8 -28", "none", BK, 1.4) +
+    Pt("M-14 44 L-14 50 L-8 50 L-8 44 M4 44 L4 50 L10 50 L10 44", BK) + C(-2, -22, 0.7, BK);
+  const UMBRELLA = () => Pt("M-20 0 Q0 -20 20 0Z", BL, BK, 1) + Pt("M-20 0 Q-13 -4 -7 0 Q0 -4 7 0 Q13 -4 20 0", "none", BK, 0.8) +
+    Pt("M-12 -2 L0 -14 L12 -2 M-4 -1 L0 -14 L4 -1", "none", BK, 0.6) + Pt("M0 -14 L0 -18 M0 0 L0 30", "none", BK, 1.3);
+  const FROG = () => E(0, 0, 9, 6.5, YL, 0, ink(1)) + C(-4, -5, 2.6, YL, ink(0.8)) + C(4, -5, 2.6, YL, ink(0.8)) + C(-4, -5, 1, BK) + C(4, -5, 1, BK) +
+    Pt("M-8 3 L-13 8 L-9 8 M8 3 L13 8 L9 8 M-6 -1 L-11 -6 M6 -1 L11 -6", "none", BK, 1.1) + Pt("M-4 1 L4 1 M-3 3 L3 3", "none", BK, 0.6);
+  const SWALLOW = () =>
+    Pt("M-2 0 C-10 -14 -28 -20 -40 -16 C-30 -10 -18 -4 -6 4Z", YL, BK, 0.9) + Pt("M-10 -8 L-30 -16 M-8 -4 L-32 -12 M-14 -10 L-24 -18", "none", BK, 0.6) +
+    Pt("M2 0 C10 -14 28 -20 40 -16 C30 -10 18 -4 6 4Z", YL, BK, 0.9) + Pt("M10 -8 L30 -16 M8 -4 L32 -12 M14 -10 L24 -18", "none", BK, 0.6) +
+    Pt("M-6 0 C-6 -6 6 -6 6 0 C6 8 -6 8 -6 0Z", YL, BK, 0.9) + C(0, -8, 4, RD, ink(0.9)) + C(1, -9, 0.8, BK) +
+    Pt("M-3 6 C-8 24 -12 40 -16 52 C-8 42 -4 28 -1 10Z", RD, BK, 0.8) + Pt("M3 6 C6 22 6 38 4 50 C10 38 8 22 4 8Z", RD, BK, 0.8) +
+    Pt("M-6 14 L-10 30 M-8 18 L-13 36 M4 14 L5 30 M6 18 L7 34", "none", BK, 0.5);
 
   function art(c) {
-    const g = c.kind === "gwang", y = c.kind === "yeol", t = c.kind === "tti";
+    const g = c.kind === "gwang", y = c.kind === "yeol", t = c.kind === "tti", p = c.kind === "pi";
     const rnd = rng(c.id + 7);
     let s = "";
     switch (c.m) {
-      case 1: { // 송학
+      case 1: { // 송학: 솔 덤불(노란 솔눈), 광은 붉은 해와 학
         if (g) {
-          s += Pt("M90 0 V44 A44 44 0 0 1 46 0Z", RD, BK, 1);                   // 붉은 해
-          s += Pt("M30 112 C18 104 16 84 30 74 C40 68 52 74 50 86 C48 96 40 100 30 112Z", WH, BK, 1.4);   // 학 몸
-          s += Pt("M22 80 C10 84 6 98 14 108 M26 84 C16 92 16 102 20 110 M30 86 C24 96 26 104 28 112", "none", BK, 1.4);
-          s += Pt("M44 76 C48 60 40 44 30 34", "none", BK, 3.2) + Pt("M44 76 C48 60 40 44 30 34", "none", WH, 1.2);
-          s += C(29, 32, 4, WH, ink(1)) + C(29, 29.5, 2.4, RD) + Pt("M26 33 L14 38", "none", BK, 1.6) + C(30.5, 31.5, .8, BK);
-          s += Pt("M34 112 L32 132 M40 110 L42 132", "none", BK, 1.4);
-          s += pineTuft(46, 140, 44, 62, rnd) + pineTuft(56, 104, 34, 36, rnd);
-          s += gwangMark(74, 126);
+          s += C(84, 4, 22, RD, ink(1));
+          s += CRANE();
+          s += pine(10, 140, 26, 24) + pine(46, 140, 26, 34) + pine(64, 140, 30, 60, 2) + pine(84, 140, 26, 46, 3);
+          s += gwangMark(72, 124);
+        } else if (t) {
+          s += pine(12, 140, 34, 64, 3) + pine(46, 140, 40, 98, -2) + pine(80, 140, 36, 82, -3) + pine(28, 140, 24, 36) + pine(64, 140, 24, 40);
+          s += ribbon("hong", 30, 72, -20, 82, 17);
         } else {
-          s += branch("M4 140 Q26 100 64 70", 4);
-          s += pineTuft(0, 140, 46, 86, rnd) + pineTuft(40, 140, 50, 96, rnd) + pineTuft(14, 92, 44, 48, rnd) + pineTuft(48, 70, 40, 40, rnd);
+          s += pine(14, 140, 34, 44, 3) + pine(45, 140, 40, 70) + pine(78, 140, 36, 56, -3) + pine(30, 140, 22, 26) + pine(62, 140, 22, 30);
         }
         break;
       }
-      case 2: { // 매조
-        s += scallop(22);
-        s += branch("M6 140 L22 112 L18 88 L40 70 L36 50 L60 34 L84 26", 5) + branch("M40 70 L64 76 L84 64", 3.5);
-        for (const [x, yy] of [[22, 112], [18, 88], [40, 70], [36, 50], [60, 34], [64, 76], [84, 64], [30, 128], [76, 30], [52, 92]]) s += flower5(x, yy, 9, RD);
-        if (y) s += `<g transform="translate(46 100)">` + E(0, 0, 16, 9, YL, -15, ink(1.2)) + C(13, -8, 6.5, YL, ink(1.2)) + Pt("M18 -9 L26 -7 L18 -4Z", BK) +
-                    Pt("M-6 -4 Q-10 -18 10 -10Z", BK) + Pt("M-14 2 L-26 0 L-22 8Z", BK) + C(14, -9, 1.6, BK) + Pt("M8 -14 Q12 -16 18 -12", "none", BK, 1.5) + `</g>`;
+      case 2: { // 매조: 검은 매화 가지, 붉은 꽃, 고도리는 꾀꼬리
+        if (y) {
+          s += cloud(0, 90, 9, 6) + cloudV(9, 40, 82, 5.4);
+          s += Pt("M0 96 C10 94 18 96 26 100 L34 108 L40 140 M34 108 L48 104", "none", BK, 5);
+          s += g$(40, 64, 1.2, WARBLER(), -8);
+          for (const [x, yy, r] of [[10, 62, 10], [12, 116, 10], [34, 122, 9], [58, 120, 10], [80, 110, 7]]) s += plum(x, yy, r);
+          s += bud(28, 100, 3) + bud(48, 110, 3) + bud(68, 98, 2.6) + bud(46, 134, 2.6);
+        } else if (t) {
+          s += Pt("M30 140 L44 122 L38 104 L56 88 L52 66 L66 50 L62 30 L74 12 M56 88 L74 84 M52 66 L36 58", "none", BK, 5.5);
+          for (const [x, yy, r] of [[72, 36, 10.5], [26, 80, 10], [66, 112, 10.5], [36, 118, 8]]) s += plum(x, yy, r);
+          s += bud(64, 6, 3) + bud(80, 70, 3) + bud(48, 98, 2.6) + bud(20, 122, 3);
+          s += ribbon("hong", 28, 54, -20, 84, 17);
+        } else {
+          s += Pt("M42 140 L46 116 L30 96 L26 74 L14 56 M46 116 L62 96 L70 72 L82 54 M30 96 L46 84 M62 96 L50 84", "none", BK, 5.5);
+          for (const [x, yy, r] of [[16, 46, 10.5], [72, 40, 10.5], [58, 72, 10], [24, 112, 10.5], [70, 114, 10]]) s += plum(x, yy, r);
+          s += bud(38, 56, 3) + bud(44, 76, 2.6) + bud(34, 88, 3) + bud(82, 76, 2.6) + bud(46, 104, 2.6);
+        }
         break;
       }
-      case 3: { // 벚꽃
-        const cols = [RD, BK, WH, RD, PK];
-        for (let i = 0; i < 26; i++) {
-          const x = 8 + rnd() * 74, yy = 8 + rnd() * (g ? 58 : 100), col = cols[i % cols.length];
-          s += flower5(x, yy, 7 + rnd() * 3, col, col === BK ? RD : YL);
-        }
+      case 3: { // 벚꽃: 빨강·하양 벚꽃 덤불, 광은 장막
+        const spots = g ? [[10, 12, 11, RD], [32, 8, 10, WH], [54, 14, 11, RD], [78, 10, 10, WH], [20, 32, 10, WH], [44, 32, 11, RD], [68, 32, 10.5, WH], [86, 34, 8, RD], [10, 54, 10, RD], [32, 54, 10.5, WH], [56, 56, 11, RD], [80, 56, 10, WH], [22, 74, 9, WH], [46, 76, 9, RD], [70, 76, 9, WH]]
+          : t ? [[20, 24, 10, WH], [42, 12, 9, RD], [66, 20, 10, WH], [18, 60, 11, RD], [44, 46, 10, WH], [72, 58, 10.5, RD], [24, 96, 10.5, WH], [62, 92, 10, WH], [40, 120, 10, RD], [76, 120, 9, RD], [12, 124, 8, WH]]
+          : [[36, 18, 10, RD], [60, 22, 10.5, WH], [22, 42, 10.5, WH], [48, 46, 11, RD], [72, 44, 10, WH], [30, 70, 10.5, RD], [56, 72, 10.5, WH], [78, 70, 8, RD], [40, 96, 10, WH], [64, 100, 10.5, RD], [22, 98, 9, WH], [48, 122, 9, RD]];
+        if (!g) s += Pt(t ? "M8 140 L38 100 L50 70 M38 100 L72 112" : "M28 140 L50 112 L56 84 M50 112 L74 134", "none", BK, 5);
+        for (const [x, yy] of spots) s += leaf(x + 5, yy + 7, 9, 40 + rnd() * 60) + leaf(x - 7, yy + 5, 8, 140 + rnd() * 40);
+        for (const [x, yy, r, col] of spots) s += sakura(x, yy, r, col, rnd() * 60);
+        for (let i = 0; i < (g ? 8 : 7); i++) { const bx = 6 + rnd() * 78, by = 6 + rnd() * (g ? 72 : 126); s += Pt(`M${f1(bx)} ${f1(by)} l${f1(rnd() * 6 - 3)} 4`, "none", BK, 0.6) + C(f1(bx), f1(by), 2.2, RD, ink(0.4)); }
         if (g) {
-          s += R(0, 82, 90, 58, BK) + Pt("M0 82 Q45 72 90 82 V92 Q45 82 0 92Z", RD, BK, 1);
-          for (let i = 0; i < 8; i++) s += Pt(`M${4 + i * 11} 98 l5 6 l5 -6`, "none", YL, 2);
-          s += R(0, 110, 90, 6, RD) + gwangMark(14, 126);
+          s += Pt("M0 84 Q45 88 90 102 L90 128 Q45 116 0 112Z", BK);
+          for (let i = 0; i < 8; i++) { const x = 4 + i * 11.5, yy = 95 + i * 1.9; s += R(f1(x), f1(yy), 6, 5, YL, ink(0.6)) + Pt(`M${f1(x)} ${f1(yy)} L${f1(x + 6)} ${f1(yy + 5)} M${f1(x + 6)} ${f1(yy)} L${f1(x)} ${f1(yy + 5)}`, "none", BK, 0.5); }
+          s += Pt("M0 116 Q45 122 90 132 L90 140 L0 140Z", RD, BK, 0.8) + Pt("M0 112 Q45 118 90 128", "none", WH, 1);
+          s += gwangMark(12, 126);
         }
+        if (t) s += ribbon("hong", 50, 64, 22, 84, 17);
         break;
       }
-      case 4: { // 흑싸리
+      case 4: { // 흑싸리: 검은 등나무 줄기, 열끗은 붉은 초승 하늘과 두견새
         if (y) {
-          s += `<g transform="translate(48 30) rotate(-15)">` + E(0, 0, 20, 7, RD, 0, ink(1)) + Pt("M-4 -2 Q4 -24 24 -18 Q8 -8 4 0Z", YL, BK, 1) + Pt("M-4 2 Q2 18 20 18 Q8 8 2 2Z", RD, BK, 1) +
-                    C(19, -2, 5.5, RD, ink(1)) + Pt("M24 -2 L32 0", "none", BK, 2) + Pt("M-18 0 L-30 -6 L-28 5Z", BK) + C(20, -3, 1, BK) + `</g>`;
+          s += Pt("M30 0 C62 0 88 20 90 52 C80 30 60 14 30 0Z", RD, BK, 0.8) + Pt("M30 0 L90 0 L90 52 C88 20 62 0 30 0Z", RD);
+          s += fern(16, 0, 4, 64, 10) + fern(6, 50, 18, 118, 9, 1) + fern(2, 80, 10, 136, 6);
+          s += fern(90, 66, 76, 108, 6, -1) + fern(86, 92, 80, 126, 4);
+          s += g$(46, 44, 1.2, CUCKOO(), -14);
+        } else {
+          for (const [x, h, l] of p ? [[10, 54, -4], [28, 62, 2], [46, 48, 0], [62, 60, -2], [80, 52, 4]] : [[8, 58, -4], [26, 66, 2], [44, 52, 0], [62, 64, -2], [80, 56, 4]]) s += fernTree(x, 140, h, l);
+          if (p) s += Pt("M44 92 C44 84 42 78 44 72", "none", BK, 0.9) + swirl(44, 72, 7, 1);
+          if (t) s += ribbon("cho", 34, 58, -14, 74, 16);
         }
-        const top = y ? 56 : 30;
-        for (const x of [10, 26, 42, 58, 74, 86]) s += leafStrand(x, top, 140 - top - 4, BK, rnd, rnd() < 0.5);
         break;
       }
-      case 5: { // 난초(창포)
-        for (const [x, h, l] of [[4, 70, 8], [18, 84, -6], [30, 64, 10], [48, 78, -8], [62, 70, 6], [76, 86, -4]]) s += sword(x, 140, h, l);
-        for (const [x, yy, k] of [[20, 58, 1.2], [46, 44, 1.3], [70, 60, 1.2]]) s += iris(x, yy, k);
+      case 5: { // 난초(창포): 파란 붓꽃, 검은 칼잎, 열끗은 노란 다리
         if (y) {
-          s += Pt("M0 112 L36 92 L52 104 L90 84 L90 98 L52 118 L36 106 L0 126Z", YL, BK, 1.4);
-          s += Pt("M10 106 L10 120 M26 98 L26 112 M64 98 L64 112 M80 90 L80 104", "none", BK, 1.2);
+          s += cloud(0, 40, 6, 5);
+          for (const [x, h, l] of [[0, 128, 18], [12, 136, 6], [26, 104, 22], [54, 116, -10], [66, 128, -20], [78, 92, -8]]) s += blade(x, 140, h, l, 8);
+          s += iris(40, 54, 1.6);
+          s += Pt("M0 116 L50 96 L90 108 L90 124 L50 112 L0 132Z", BL);
+          s += Pt("M0 100 L52 80 L90 94 L90 106 L52 92 L0 114Z", YL, BK, 1) + Pt("M6 118 L60 98 L90 110 L90 122 L60 110 L6 130Z", YL, BK, 1);
+          for (const [x, yy] of [[12, 102], [30, 96], [62, 90], [80, 96]]) s += R(x - 3.5, yy - 7, 7, 28, YL, ink(0.9)) + E(x, yy - 7, 3.5, 1.6, RD, 0, ink(0.6));
+        } else {
+          for (const [x, h, l] of p ? [[0, 52, 20], [12, 62, -10], [28, 46, 18], [48, 58, -18], [62, 68, 14], [76, 50, -14]] : [[0, 56, 20], [14, 68, -12], [32, 52, 20], [52, 64, -18], [66, 72, 12], [78, 54, -14]]) s += blade(x, 140, h, l, 10);
+          s += p ? Pt("M40 76 L40 140", "none", "#c49600", 1.6) + iris(40, 62, 1.55) : Pt("M22 80 L22 140 M62 56 L60 100", "none", "#c49600", 1.4) + iris(22, 68, 1.5) + iris(62, 42, 1.5);
+          if (t) s += ribbon("cho", 38, 50, -14, 84, 16);
         }
         break;
       }
-      case 6: { // 모란
-        s += Pt("M6 70 Q20 54 30 62 Q22 76 6 70Z", BK) + Pt("M84 80 Q70 64 60 72 Q68 86 84 80Z", BK) + Pt("M30 120 Q40 104 52 112 Q44 126 30 120Z", BK);
-        s += peony(28, 92, 18, RD) + peony(62, 104, 16, t ? RD : WH) + peony(64, 62, 13, RD);
-        if (y) for (const [x, yy] of [[22, 26], [64, 20]]) s += E(x - 7, yy, 7, 10, YL, -25, ink(1)) + E(x + 7, yy, 7, 10, YL, 25, ink(1)) +
-                    E(x - 5, yy + 11, 4, 6, YL, 20, ink(1)) + E(x + 5, yy + 11, 4, 6, YL, -20, ink(1)) + E(x, yy + 4, 1.8, 10, BK) + C(x - 7, yy - 2, 2, BK) + C(x + 7, yy - 2, 2, BK);
+      case 6: { // 모란: 빨강·하양 모란, 열끗은 노랑나비
+        if (y) {
+          s += leaves(10, 56, 12, 20) + leaves(84, 30, 11) + leaves(80, 88, 10);
+          s += peony(26, 10, 21, WH) + peony(60, 34, 25, RD) + peony(32, 66, 25, RD) + peony(78, 60, 14, RD);
+          s += Pt("M0 140 L0 126 a7 7 0 0 1 14 0 a7 7 0 0 1 14 0 a7 7 0 0 1 14 0 L42 140Z", RD, BK, 0.8);
+          s += g$(18, 106, 1, BUTTERFLY(), -25) + g$(70, 120, 0.95, BUTTERFLY(), 20);
+        } else if (t) {
+          s += leaves(10, 50, 12) + leaves(80, 34, 11) + leaves(16, 128, 12);
+          s += peony(20, 18, 20, WH) + peony(48, 14, 16, WH) + peony(70, 62, 23, RD) + peony(26, 102, 24, RD) + peony(74, 112, 16, WH);
+          s += ribbon("cheong", 42, 70, 14, 88, 18);
+        } else {
+          s += leaves(8, 64, 11) + leaves(84, 66, 11) + leaves(46, 134, 12);
+          s += peony(30, 34, 23, RD) + peony(62, 38, 23, RD) + peony(28, 92, 24, WH) + peony(64, 100, 23, WH) + peony(80, 74, 12, RD);
+        }
         break;
       }
-      case 7: { // 홍싸리
-        for (const x of [8, 20, 32, 44, 56, 68, 80]) s += clover(x, 140, y ? 50 + rnd() * 20 : 60 + rnd() * 30, rnd);
-        if (y) s += `<g transform="translate(46 54)">` + E(0, 0, 26, 13, YL, -8, ink(1.3)) + E(24, -4, 11, 9, YL, 10, ink(1.3)) +
-                    Pt("M-18 -8 L-14 6 M-8 -11 L-4 8 M2 -12 L5 9 M12 -11 L14 7", "none", BK, 2) + C(28, -7, 1.6, BK) + Pt("M34 -2 L40 2", "none", WH, 2.5) +
-                    Pt("M-16 10 L-24 24 M-6 12 L-8 26 M10 11 L16 24 M18 9 L26 20", "none", BK, 3) + Pt("M-26 -2 Q-34 -8 -32 4", "none", BK, 2) + `</g>`;
+      case 7: { // 홍싸리: 붉은 싸리, 열끗은 멧돼지
+        if (y) {
+          s += cloud(0, 90, 6, 5);
+          s += bush(4, 92, 56, 14, rnd) + bush(6, 140, 36, 4, rnd, 0.35) + bush(36, 140, 30, -4, rnd) + bush(62, 140, 32, 6, rnd) + bush(84, 140, 26, -2, rnd, 0.3);
+          s += g$(46, 74, 1.05, BOAR(), -18);
+        } else {
+          const set = t ? [[8, 66, 2], [30, 74, 6], [60, 60, -4], [82, 72, 4]] : [[10, 56, 2], [34, 62, 4], [58, 50, -2], [80, 60, -4]];
+          for (const [x, h, l] of set) s += bush(x, 140, h, l, rnd, 0.28);
+          if (t) s += ribbon("cho", 48, 46, 16, 76, 16);
+        }
         break;
       }
-      case 8: { // 공산
-        if (g) s += R(0, 0, 90, 140, RD) + C(45, 44, 25, WH, ink(1.4));
-        s += hill(70);
-        if (y) for (const [x, yy] of [[22, 30], [46, 18], [68, 34]]) s += `<g transform="translate(${x} ${yy})">` + E(0, 0, 9, 4, RD, -10, ink(1)) + Pt("M-4 -2 L-10 -12 L4 -4Z", RD, BK, 1) + Pt("M-2 2 L-10 10 L4 3Z", YL, BK, 1) + C(8, -2, 3, RD, ink(.8)) + Pt("M11 -2 L15 -1", "none", YL, 1.5) + `</g>`;
-        if (g) s += gwangMark(74, 128);
+      case 8: { // 공산: 검은 산, 광은 붉은 하늘과 흰 달, 열끗은 기러기
+        if (g) s += R(0, 0, 90, 140, RD) + C(45, 36, 24, WH, ink(1));
+        s += hill(g ? 66 : 58, BK, g ? 0 : 4);
+        if (y) s += g$(56, 22, 1.05, GOOSE(RD), -18) + g$(20, 40, 1.05, GOOSE(YL), -12) + g$(54, 50, 1.05, GOOSE(YL), -20);
+        if (g) s += gwangMark(74, 126);
         break;
       }
-      case 9: { // 국화
-        if (!y) s += Pt("M0 140 V110 Q20 96 45 108 Q70 96 90 110 V140Z", BK);
-        s += mum(30, 48, 22, YL, RD) + mum(64, 76, 20, RD, YL);
-        s += Pt("M30 70 L34 108 M64 96 L60 116", "none", BK, 2.5) + E(18, 92, 10, 4, BK, -30) + E(76, 104, 10, 4, BK, 30);
-        if (y) s += Pt("M0 112 Q45 100 90 112 V140 H0Z", BL, BK, 1) + Pt("M22 102 L68 102 L60 126 L30 126Z", RD, BK, 1.4) + E(45, 102, 23, 6, "#f04a3a", 0, ink(1)) + R(38, 126, 14, 6, RD, ink(1)) + T(45, 120, "壽", 13, YL);
+      case 9: { // 국화: 부채꼴 국화와 둥근 국화, 열끗은 술잔(국진)
+        if (y) {
+          s += cloud(40, 90, 7, 5) + cloudV(7, 26, 84, 4);
+          s += leaves(10, 46, 16) + leaves(14, 92, 16) + leaves(64, 62, 12) + leaves(84, 40, 8);
+          s += Pt("M60 24 L40 58", "none", BK, 3) + fanMum(60, 20, 19, 0);
+          s += mum(30, 66, 20, YL, RD);
+          s += Pt("M0 96 Q30 90 90 98 L90 122 L0 122Z", BL) + Pt("M0 104 Q40 98 90 106 M0 112 Q40 106 90 114", "none", BK, 0.7);
+          s += hill(110, BK) + g$(64, 88, 1.05, SAKE(), -16);
+        } else if (t) {
+          s += leaves(14, 48, 16) + leaves(74, 50, 14) + leaves(18, 116, 16) + leaves(80, 118, 13);
+          s += fanMum(34, 18, 18, 24) + mum(58, 98, 21, YL, RD);
+          s += ribbon("cheong", 40, 66, 12, 80, 18);
+        } else {
+          s += leaves(18, 72, 16) + leaves(72, 74, 16) + leaves(22, 122, 16) + leaves(70, 124, 16) + leaves(46, 132, 12);
+          s += fanMum(44, 32, 20, 30) + mum(44, 98, 22, RD, YL);
+        }
         break;
       }
-      case 10: { // 단풍
-        const cols = [RD, BK, YL, RD, YL, BK, RD];
-        let i = 0;
-        for (const [x, yy, r] of [[14, 16, 12], [40, 12, 11], [68, 18, 12], [26, 40, 11], [56, 42, 12], [80, 46, 10], [12, 70, 11], [40, 72, 12], [70, 76, 11], [24, 104, 11], [60, 110, 12], [84, 104, 10], [44, 130, 10]])
-          if (!y || yy < 70 || x > 70) s += maple(x, yy, r, cols[i++ % cols.length]);
-        if (y) s += `<g transform="translate(38 108)">` + E(0, 0, 22, 11, YL, 0, ink(1.3)) + E(18, -18, 7, 10, YL, -20, ink(1.3)) + C(20, -20, 1.5, BK) +
-                    Pt("M16 -28 L10 -42 M12 -36 L4 -38 M22 -28 L28 -42 M26 -36 L34 -38", "none", BK, 2) +
-                    Pt("M-14 9 L-16 30 M-6 10 L-6 30 M8 10 L10 30 M16 8 L18 30", "none", BK, 3) +
-                    C(-8, -3, 2, BK) + C(2, 2, 2, BK) + C(-14, 3, 1.6, BK) + C(10, -4, 1.6, BK) + `</g>`;
+      case 10: { // 단풍: 빨강·노랑·검정 단풍잎, 열끗은 사슴
+        if (y) {
+          s += Pt("M0 0 L14 0 C10 40 18 90 12 140 L0 140Z", RD, BK, 0.8) + Pt("M5 20 C3 50 8 70 5 100 M9 104 L6 132", "none", YL, 2.4);
+          for (const [x, yy, r, col, rot] of [[16, 12, 19, RD, 10], [44, 4, 17, BK, -10], [76, 18, 19, YL, 20], [10, 48, 17, RD, -20], [30, 34, 15, YL, 30], [14, 86, 17, YL, 0], [10, 122, 17, RD, 15], [84, 56, 15, RD, -15]])
+            s += maple(x, yy, r, col, rot);
+          s += g$(52, 80, 1.3, DEER());
+        } else {
+          const set = t ? [[14, 14, 19, RD], [46, 16, 19, YL], [78, 14, 17, RD], [80, 50, 19, BK], [14, 58, 18, YL], [70, 86, 19, RD], [16, 100, 19, BK], [42, 130, 18, YL], [76, 126, 19, BK]]
+            : [[16, 40, 20, RD], [48, 20, 19, YL], [80, 42, 19, RD], [30, 70, 19, BK], [62, 70, 20, RD], [12, 98, 18, YL], [44, 100, 19, BK], [78, 100, 19, BK], [24, 128, 19, YL], [60, 130, 19, RD], [86, 128, 16, YL]];
+          for (const [x, yy, r, col] of set) s += maple(x, yy, r, col, rnd() * 60 - 30);
+          if (t) s += ribbon("cheong", 44, 72, -14, 84, 18);
+        }
         break;
       }
-      case 11: { // 오동
-        const bottom = g ? YL : c.ssang ? RD : null;
-        if (bottom) s += R(0, 104, 90, 36, bottom);
-        s += Pt("M4 104 Q2 84 18 82 Q20 70 34 74 Q44 64 56 74 Q70 70 72 82 Q88 84 86 104 Q66 96 45 104 Q24 96 4 104Z", BK);
-        s += Pt("M45 76 L45 30", "none", BK, 2.5);
-        for (let yy = 30; yy < 72; yy += 8) s += E(40, yy, 4, 3, BL, -20, ink(.6)) + E(50, yy + 4, 4, 3, BL, 20, ink(.6));
-        if (g) s += `<g transform="translate(44 26)">` + C(0, 0, 8, RD, ink(1.2)) + Pt("M6 -2 L14 0 L6 3Z", YL, BK, .8) + C(2, -2, 1.4, BK) +
-                    Pt("M-4 6 Q-30 20 -40 60 Q-20 40 -2 14Z", YL, BK, 1) + Pt("M2 8 Q10 36 2 70 Q16 40 10 10Z", RD, BK, 1) + Pt("M-2 8 Q-14 40 -26 74 Q-6 46 4 12Z", BL, BK, 1) + `</g>` + gwangMark(76, 124);
+      case 11: { // 오동: 오동 꽃대와 큰 검은 잎, 광은 봉황(닭), 쌍피는 붉은 밑단
+        if (g) {
+          s += Pt("M0 0 L90 0 L90 54 C70 30 30 26 0 52Z", BK);
+          for (let i = 0; i < 18; i++) s += Pt(`M${f1(5 + i * 5)} 0 L${f1(20 + i * 3)} 14`, "none", RD, 0.8);
+          s += Pt("M0 52 C30 26 70 30 90 54 L90 100 L0 100Z", WH) + Pt("M0 52 C30 26 70 30 90 54", "none", BK, 1);
+          s += budStalk(54, 82, 48, 44, 4) + budStalk(64, 82, 72, 50, 3) + star(56, 66, 10);
+          s += Pt("M0 112 L0 96 C10 84 22 92 30 86 C40 76 56 84 62 90 C72 84 84 88 90 96 L90 112Z", BK);
+          s += R(0, 108, 90, 32, YL) + Pt("M0 108 L90 108", "none", BK, 0.8) + leaves(72, 122, 9);
+          s += g$(24, 42, 1.3, ROOSTER());
+          s += gwangMark(50, 122);
+        } else {
+          s += budStalk(30, 92, 22, 18, 6) + budStalk(56, 92, 64, 22, 6);
+          if (c.ssang) {
+            s += star(32, 54, 12) + star(60, 60, 12);
+            s += Pt("M0 98 C2 80 14 74 24 80 C30 66 46 68 50 80 C58 70 76 72 80 84 C88 82 90 92 90 98 Z", BK) + R(0, 96, 90, 44, RD) + Pt("M0 96 L90 96", "none", BK, 0.8);
+            s += Pt("M0 96 C10 108 24 102 32 96 M56 96 C66 108 82 108 90 96", BK);
+          } else {
+            s += star(44, 72, 11);
+            s += paulLeaf(44, 104, 80, 38);
+          }
+        }
         break;
       }
-      case 12: { // 비
+      case 12: { // 비: 버들, 광은 우산 쓴 선비, 열끗은 제비, 쌍피는 붉은 바탕
         if (c.ssang) {
           s += R(0, 0, 90, 140, RD);
-          s += Pt("M10 0 L20 0 Q10 40 34 80 Q50 110 30 140 L18 140 Q34 108 22 80 Q2 40 10 0Z", BK);
-          s += Pt("M56 0 L80 0 Q70 30 84 60 Q90 74 90 74 V140 L66 140 Q74 96 58 70 Q44 40 56 0Z", BK);
-          for (let i = 0; i < 9; i++) s += Pt(`M${6 + i * 10} 0 L${2 + i * 10} 140`, "none", BK, 0.8, `opacity=".5"`);
+          s += Pt("M0 36 C18 24 38 32 40 56 L40 140 L0 140Z", BK) + Pt("M54 140 L54 50 C56 30 80 24 90 32 L90 140Z", BK);
+          let d = "";
+          for (let i = 0; i < 18; i++) d += `M${f1(rnd() * 90)} ${f1(rnd() * 40)} L${f1(rnd() * 90)} ${f1(rnd() * 40)} `;
+          for (let i = 0; i < 10; i++) d += `M${f1(40 + rnd() * 14)} ${f1(40 + rnd() * 100)} L${f1(40 + rnd() * 14)} ${f1(40 + rnd() * 100)} `;
+          for (let i = 0; i < 10; i++) d += `M${f1(rnd() * 90)} ${f1(116 + rnd() * 24)} L${f1(rnd() * 90)} ${f1(116 + rnd() * 24)} `;
+          s += Pt(d, "none", BK, 0.6);
           break;
         }
-        s += Pt("M0 0 Q14 30 6 70 M20 0 Q32 34 22 78 M70 0 Q56 34 66 80 M86 0 Q74 30 84 64", "none", BK, 2.2);
-        for (const [x0, x1] of [[6, 16], [22, 34], [66, 56], [84, 74]]) for (let yy = 8; yy < 70; yy += 10) s += E(x0 + (x1 - x0) * (yy / 70), yy, 2.2, 6, BK, x1 > x0 ? 20 : -20);
         if (g) {
-          s += Pt("M0 118 Q20 108 40 118 T90 114 V140 H0Z", BL, BK, 1) + Pt("M0 126 Q22 118 44 128 T90 124", "none", WH, 1.4);
-          s += Pt("M20 62 Q45 36 70 62Z", BK) + Pt("M45 62 L45 98", "none", BK, 2.5);
-          s += Pt("M34 76 Q45 70 56 76 L58 110 L32 110Z", RD, BK, 1.2) + C(45, 70, 6, "#f6d7b3", ink(1)) + R(36, 108, 18, 6, BK) + Pt("M50 82 L62 92", "none", BK, 2);
-          s += E(74, 110, 7, 5, YL, 0, ink(1)) + C(72, 107, 1.2, BK) + gwangMark(12, 12);
+          s += willow(14, 0, 54, 10, 18) + willow(36, 0, 34, -6, 10) + willow(66, 0, 50, 10, 16) + willow(86, 0, 40, 4, 10);
+          s += Pt("M0 92 C20 80 40 98 60 84 C72 76 82 80 90 76 L90 92 C80 96 70 92 60 100 C40 112 20 96 0 108Z", BL, BK, 0.9) + Pt("M4 100 C20 92 40 104 58 94 M62 90 C72 84 82 86 90 84", "none", WH, 0.8);
+          s += g$(62, 52, 1.1, UMBRELLA(), 8) + g$(42, 84, 1.05, MAN());
+          s += g$(14, 120, 0.65, BUTTERFLY(), -20) + g$(68, 124, 1.1, FROG());
+          s += gwangMark(12, 12);
+        } else {
+          s += willow(10, 0, 70, -6, 20) + willow(30, 0, 112, -14, 18) + willow(68, 0, 108, 10, 18) + willow(86, 0, 64, 4, 14);
+          if (y) s += g$(48, 68, 1.2, SWALLOW(), -10);
+          if (t) s += ribbon("bi", 52, 66, -16, 82, 16);
         }
-        if (y) s += `<g transform="translate(48 96) rotate(-10)">` + E(0, 0, 16, 6, YL, 0, ink(1)) + Pt("M-12 1 L-30 -10 M-12 2 L-30 10", "none", BK, 2.5) +
-                    Pt("M-4 -4 Q6 -26 22 -14 Q8 -6 4 -1Z", BK) + C(14, -4, 5.5, RD, ink(1)) + E(4, 3, 8, 3, RD) + C(15, -5, 1, WH) + `</g>`;
-        if (t) s += Pt("M0 120 Q30 110 60 122 T90 118 V140 H0Z", BK);
         break;
       }
     }
-    if (t) s += ribbon(c.rib);
     return s;
   }
 
