@@ -346,8 +346,9 @@
   }
 
   // ================= 전적 =================
-  const REC = { get w() { return Number(store.get("nn.wins")) || 0; }, get l() { return Number(store.get("nn.losses")) || 0; },
-    get s() { return Number(store.get("nn.streak")) || 0; }, get best() { return Number(store.get("nn.bestStreak")) || 0; } };
+  // 전적은 이번에 켠 동안만 센다. 껐다 켜면(새로고침 포함) 0승 0패에서 새로 시작한다.
+  const REC = { w: 0, l: 0, s: 0, best: 0 };
+  try { ["nn.wins", "nn.losses", "nn.streak", "nn.bestStreak"].forEach(k => localStorage.removeItem(k)); } catch (e) {}   // 예전 판이 남긴 누적 기록 정리
   function showRec() {
     $("#recW").textContent = REC.w; $("#recL").textContent = REC.l;
     const n = REC.w + REC.l;
@@ -358,9 +359,9 @@
   function record(win) {
     let newBest = false;
     if (win) {
-      store.set("nn.wins", String(REC.w + 1)); store.set("nn.streak", String(REC.s + 1));
-      if (REC.s > REC.best) { store.set("nn.bestStreak", String(REC.s)); newBest = REC.s >= 2; }
-    } else { store.set("nn.losses", String(REC.l + 1)); store.set("nn.streak", "0"); }
+      REC.w++; REC.s++;
+      if (REC.s > REC.best) { REC.best = REC.s; newBest = REC.s >= 2; }
+    } else { REC.l++; REC.s = 0; }
     showRec();
     return newBest;
   }
