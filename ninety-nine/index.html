@@ -246,6 +246,33 @@
       return actx;
     } catch (e) { return null; }
   }
+
+  // ---- 소리 지킴이 ----
+  // 휴대폰에서 가끔 소리가 끊기는 세 가지 경우를 되살린다.
+  //  1) 전화·알림·잠금·앱 전환 뒤 엔진이 '중단(interrupted)'·'일시정지'로 멈춤 → 손을 댈 때·화면에 돌아올 때 다시 깨운다
+  //  2) 아이폰은 '손을 뗄 때' 같은 진짜 사용자 동작 안에서 소리를 한 번 내야 풀린다 → 들리지 않는 한 조각을 튼다
+  //  3) 이어폰 연결 등으로 엔진이 '켜짐'인데 시계가 멈춘 채 얼어붙음 → 엔진을 새로 갈아 끼운다
+  //  + 무음 스위치가 켜져 있어도 게임 소리는 '재생'으로 취급(iOS 16.4 이상)
+  let guardAT = -1, guardWall = 0;
+  function wakeAudio() {
+    try { if (navigator.audioSession && navigator.audioSession.type !== "playback") navigator.audioSession.type = "playback"; } catch (e) {}
+    if (!actx || !(true)) return;
+    try {
+      const now = performance.now();
+      if (actx.state === "running" && guardAT >= 0 && now - guardWall > 1500 && actx.currentTime === guardAT) {
+        try { actx.close(); } catch (e) {}
+        actx = null; audio();
+        if (!actx) return;
+      }
+      if (actx.state !== "running") actx.resume();
+      const b = actx.createBuffer(1, 1, 22050), src = actx.createBufferSource();
+      src.buffer = b; src.connect(actx.destination); src.start(0);
+      guardAT = actx.currentTime; guardWall = now;
+    } catch (e) {}
+  }
+  ["pointerdown", "pointerup", "touchend", "click", "keydown"].forEach(ev => window.addEventListener(ev, wakeAudio, { capture: true, passive: true }));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) wakeAudio(); });
+  window.addEventListener("pageshow", wakeAudio);
   function tone(f, dur, type = "square", vol = 0.05, to = 0, delay = 0) {
     const a = audio(); if (!a) return;
     const t0 = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
