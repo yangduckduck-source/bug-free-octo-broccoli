@@ -47,6 +47,14 @@
     background: var(--led); color: #1a1406; font: 900 16px var(--body);
   }
   #time.hidden { display: none; }
+  /* 작전 버튼: 아래 가운데. 쓸 수 있을 때만 나타난다 */
+  #acts { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); z-index: 5; display: flex; gap: 8px; }
+  #acts .act { min-height: 44px; min-width: 76px; padding: 0 14px; border-radius: 999px; border: 2px solid rgba(255,255,255,.55); cursor: pointer;
+    background: rgba(10,14,30,.72); color: var(--ink); font: 900 16px var(--body); }
+  #acts .act.on { background: var(--led); color: #1a1406; border-color: var(--led); }
+  #acts .act:disabled { opacity: .6; cursor: default; }
+  #acts .act.hidden { display: none; }
+  #acts .act:focus-visible { outline: 3px solid var(--led); outline-offset: 2px; }
   .btns { display: flex; gap: 10px; margin-top: 10px; }
   .btns button { min-height: 52px; padding: 0 26px; border-radius: 16px; border: 0; cursor: pointer; font: 900 18px var(--body); background: var(--led); color: #1a1406; }
   .btns button.ghost { background: rgba(255,255,255,.14); color: var(--ink); }
@@ -73,6 +81,7 @@
 
 <button id="snd" type="button">소리·목소리</button>
 <button id="time" type="button" class="hidden">타임</button>
+<div id="acts"><button id="buntBtn" type="button" class="act hidden">번트</button><button id="stealBtn" type="button" class="act hidden">도루</button></div>
 
 <div class="overlay hidden" id="pause" style="pointer-events:auto">
   <h2>타임</h2>
@@ -440,6 +449,7 @@
     if (state === "over") { if (now - overAt > 900) start(); return; }
     if (!P || P.swung || P.done || P.result) return;
     if (paused) return;
+    if (P.bunt) return;                       // 번트 자세: 공이 오면 저절로 댄다
     const raw = ev && ev.timeStamp && Math.abs(ev.timeStamp - performance.now()) < 1000 ? ev.timeStamp : performance.now();
     const t = raw - pauseAcc;                 // 경기 시계로 바꾼다
     if (t < P.tRel - 120) return;            // 공을 놓기도 전에 누르면 무시
@@ -518,9 +528,13 @@
   function resolve(kind) {
     P.result = kind;
     const late = P.delta > 0;
+    if (kind === "ball" || kind === "strike" || kind === "whiff") {
+      // 볼넷이면 주자는 밀려 가므로 도루는 없던 일, 아니면 포수가 받는 순간 던진다
+      if (P.steal && !(kind === "ball" && G.balls >= 3)) later(stealOutcome, 120); else cancelSteal();
+    } else cancelSteal();
     switch (kind) {
       // 맞힌 공: 지금은 소리와 함께 날리기만 하고, 판정은 공이 떨어지거나 넘어갈 때 낸다
-      case "hr":     sfx.crack(1.4); impact("hr");  sfx.crowd(0.18, 1.2); launch(rand(42, 48), rand(26, 34), (late ? 1 : -1) * rand(2, 22)); break;
+      case "hr":     sfx.crack(1.4); impact("hr");  sfx.crowd(0.18, 1.2); launch(rand(48, 54), rand(31, 37), (late ? 1 : -1) * rand(2, 20)); P.hrDist = Math.round(rand(118, 148)); break;
       case "double": sfx.crack(1.1); impact("double");  sfx.crowd(0.14, 1.0); launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34)); break;
       case "single": sfx.crack(0.95); impact("single"); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
       case "out": {
@@ -557,12 +571,23 @@
         const n = 1 + G.bases.reduce((a, b) => a + b, 0);
         G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
         say("홈런!", 0.25); feel("batter", "joy", 2800); feel("pitcher", "shock", 2800);
+        hrFx = { at: now, fenceAt: ballScreen(P.hit), dist: P.hrDist || 125 };
         banner(n === 4 ? "만루 홈런!" : "홈런!", `${n}점`, "#ffcf3a", 2400, true);
         endPA(); break;
       }
       case "double": sfx.crowd(0.25, 1.6); feel("batter", "joy", 2000); feel("pitcher", "annoyed", 2000); advance(2); G.hits++; say("2루타!", 0.15); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
       case "single": sfx.crowd(0.18, 1.3); feel("batter", "happy", 1800); feel("pitcher", "annoyed", 1800); advance(1); G.hits++; say("안타!", 0.15); banner("안타!", "", "#ffffff", 1300); endPA(); break;
-      case "out": out(P.fly ? "뜬공 아웃" : "땅볼 아웃"); break;
+      case "out": {
+        // 병살: 주자가 있고 아웃이 1개 이하일 때 땅볼이면 가끔 두 개를 한꺼번에 잡힌다
+        const b = G.bases, any = b[0] || b[1] || b[2];
+        if (!P.fly && any && G.outs <= 1 && !P.steal && Math.random() < (b[0] ? 0.28 : 0.12)) {
+          if (b[0]) b[0] = 0; else b[b[1] ? 1 : 2] = 0;      // 1루 주자(없으면 가장 앞이 아닌 주자)가 2루에서 잡힌다
+          sfx.mitt(); later(sfx.mitt, 260);
+          if (!retire(2, "병살타!", `${Math.min(3, G.outs + 2)} 아웃`)) endPA();
+          break;
+        }
+        out(P.fly ? "뜬공 아웃" : "땅볼 아웃"); break;
+      }
       case "foul":
         if (G.strikes < 2) G.strikes++;
         say("파울!"); banner("파울", "", "#d7dbe6", 1000); feel("batter", "annoyed", 1100);
@@ -595,6 +620,14 @@
     if (G.outs >= 3) { queuedAt = 0; later(gameOver, 1700); P.done = true; return; }
     endPA();
   }
+  // 한 번에 n개 아웃(병살·주루사·희생번트). 세 번째 아웃이면 경기 끝
+  function retire(n, label, small, voice) {
+    G.outs += n;
+    say(voice || "아웃!"); feel("batter", "sad", 1800); feel("pitcher", "smirk", 1800);
+    banner(label, small != null ? small : `${Math.min(3, G.outs)} 아웃`, "#ff6b5e", 1600);
+    if (G.outs >= 3) { G.outs = 3; queuedAt = 0; later(gameOver, 1800); P.done = true; return true; }
+    return false;
+  }
   function endPA() { G.balls = 0; G.strikes = 0; G.batters++; nextPitch(2200); }
   function advance(n) {
     let runs = 0;
@@ -608,6 +641,111 @@
     const b = G.bases;
     if (b[0]) { if (b[1]) { if (b[2]) G.runs++; b[2] = 1; } b[1] = 1; }
     b[0] = 1;
+  }
+
+  // ================= 작전: 도루·번트 =================
+  const buntBtn = $("#buntBtn"), stealBtn = $("#stealBtn");
+  // 도루할 수 있는 앞 주자: 2루 주자(3루가 비었을 때) 먼저, 아니면 1루 주자(2루가 비었을 때)
+  function leadSteal() { const b = G.bases; if (b[1] && !b[2]) return 1; if (b[0] && !b[1]) return 0; return -1; }
+  let actShown = "";
+  function updateActs() {
+    const live = state === "play" && !paused && P && !P.result && !P.done && !P.swung;
+    const canBunt = live && now < P.tArr - 280;
+    const canSteal = live && !P.steal && now < P.tRel + 60 && leadSteal() >= 0;
+    const key = [canBunt, P && P.bunt, canSteal || (P && P.steal && !P.steal.done && live)].join();
+    if (key === actShown) return; actShown = key;
+    buntBtn.classList.toggle("hidden", !(canBunt || (P && P.bunt && live)));
+    buntBtn.classList.toggle("on", !!(P && P.bunt)); buntBtn.textContent = P && P.bunt ? "번트 자세" : "번트"; buntBtn.disabled = !!(P && P.bunt);
+    stealBtn.classList.toggle("hidden", !(canSteal || (P && P.steal && live)));
+    stealBtn.classList.toggle("on", !!(P && P.steal)); stealBtn.textContent = P && P.steal ? "뛴다!" : "도루"; stealBtn.disabled = !!(P && P.steal);
+  }
+  for (const b of [buntBtn, stealBtn]) { b.addEventListener("pointerdown", e => e.stopPropagation()); }
+  buntBtn.addEventListener("click", e => {
+    e.stopPropagation(); buntBtn.blur();
+    if (!P || P.bunt || P.swung || P.result || paused || now >= P.tArr - 280) return;
+    P.bunt = true; P.buntT = now; sfx.dull(); feel("batter", "effort", 900);
+  });
+  stealBtn.addEventListener("click", e => {
+    e.stopPropagation(); stealBtn.blur();
+    const from = leadSteal();
+    if (!P || P.steal || P.result || paused || from < 0 || now >= P.tRel + 60) return;
+    P.steal = { from, double: from === 1 && G.bases[0] === 1, t0: now, done: false };
+    sfx.crowd(0.12, 1.2); banner("스타트!", from === 1 ? "2루 주자 3루로" : "1루 주자 2루로", "#7ee08a", 800);
+  });
+
+  // 도루 결과: 공이 포수 미트에 들어가면(치지 않았으면) 포수가 던진다. 30% 성공, 강속구면 8%
+  let stealFx = null, throwFx = null, hrFx = null;
+  const THROW_MS = 560;
+  function stealOutcome() {
+    const st = P && P.steal; if (!st || st.done) return;
+    st.done = true;
+    if (state !== "play" || G.outs >= 3) return;
+    const b = G.bases, to = st.from + 1;
+    throwFx = { t0: now, to };
+    const ok = Math.random() < (P.type === "power" ? 0.08 : 0.3);
+    later(() => {
+      if (state !== "play") return;
+      b[st.from] = 0;
+      if (st.double) { b[0] = 0; b[1] = 1; }           // 더블 스틸: 뒤 주자는 살아서 한 칸
+      stealFx = { base: to, ok, at: now };
+      if (ok) {
+        b[to] = 1; sfx.crowd(0.3, 1.6); feel("batter", "happy", 1200);
+        banner("도루 성공!", `${to + 1}루 세이프`, "#7ee08a", 1400);
+      } else {
+        sfx.mitt(); sfx.groan();
+        retire(1, "도루 실패", `주루사 · ${Math.min(3, G.outs + 1)} 아웃`);
+      }
+    }, THROW_MS);
+  }
+  // 공에 배트를 댄 뒤 진행 중이던 도루는 없던 일 (파울이면 주자가 돌아간다)
+  function cancelSteal() { if (P && P.steal && !P.steal.done) { P.steal.done = true; P.steal.cancel = true; } }
+
+  // 번트: 공이 홈에 닿는 순간 저절로 댄다
+  function resolveBunt() {
+    const far = Math.max(ZONE.x0 - P.tx, P.tx - ZONE.x1, ZONE.y0 - P.ty, P.ty - ZONE.y1, 0);
+    P.buntDone = now;
+    if (far > 0.12) { resolve("ball"); return; }                          // 너무 빠진 공은 배트를 거둔다
+    const r = Math.random();
+    if (r < 0.12) { P.swung = true; resolve("whiff"); banner("번트 헛스윙", "", "#ffcf3a", 900); return; }
+    cancelSteal();
+    sfx.tip(); feel("batter", "effort", 700);
+    if (r < 0.32) {                                                         // 번트 파울
+      P.result = "bfoul"; launch(rand(5, 8), rand(25, 45), 180 + rand(-40, 40));
+      later(() => {
+        if (G.strikes >= 2) { out("번트 파울 삼진", true); return; }
+        G.strikes++; say("파울!"); banner("번트 파울", "", "#d7dbe6", 1000); nextPitch(1300);
+      }, 500);
+      return;
+    }
+    P.result = "bunt"; launch(rand(7, 10), rand(-4, 3), rand(-28, 28));      // 굴러가는 번트
+    later(buntCall, 1100);
+  }
+  function buntCall() {
+    if (state !== "play") return;
+    const b = G.bases, any = b[0] || b[1] || b[2], r = Math.random();
+    P.called = "bunt"; P.calledAt = now;
+    if (!any) {                                                             // 기습 번트
+      if (r < 0.25) { advance(1); G.hits++; sfx.crowd(0.2, 1.2); say("안타!", 0.15); feel("batter", "joy", 1800); banner("기습 번트 안타!", "", "#ffffff", 1500); endPA(); }
+      else out("번트 아웃");
+      return;
+    }
+    if (r < 0.15) { advance(1); G.hits++; sfx.crowd(0.2, 1.2); say("안타!", 0.15); feel("batter", "joy", 1800); banner("번트 안타!", "모두 세이프", "#ffffff", 1500); endPA(); return; }
+    if (r < 0.27) {                                                         // 선행 주자를 잡는다 (타자는 1루에)
+      const lead = b[2] ? 2 : b[1] ? 1 : 0; b[lead] = 0;
+      for (let j = lead - 1; j >= 0; j--) if (b[j]) { b[j] = 0; b[j + 1] = 1; }
+      b[0] = 1;
+      if (!retire(1, "선행 주자 아웃", `${Math.min(3, G.outs + 1)} 아웃 · 타자는 1루`)) endPA();
+      return;
+    }
+    // 희생 번트: 타자는 아웃, 주자는 한 칸씩 (3루 주자는 홈인 = 스퀴즈)
+    const last = G.outs + 1 >= 3;
+    if (!last) {
+      let runs = 0;
+      for (let i = 2; i >= 0; i--) if (b[i]) { b[i] = 0; if (i === 2) runs++; else b[i + 1] = 1; }
+      G.runs += runs;
+      if (runs) later(() => banner("스퀴즈 성공!", `${runs}점`, "#7ee08a", 1300), 1500);
+    }
+    if (!retire(1, "희생 번트", last ? "3 아웃" : `주자 진루 · ${G.outs + 1} 아웃`)) endPA();
   }
 
   // 맞은 공: 3D 포물선으로 날린다 (속도 m/s, 발사각, 좌우각)
@@ -688,6 +826,7 @@
     if (P.pending && !P.result && now >= P.resolveAt) resolve(P.pending);
     // 안 휘두르고 지나간 공
     // 늦은 스윙(파울)까지 기다렸다가 판정한다
+    if (P.bunt && !P.result && now >= P.tArr) resolveBunt();
     if (!P.swung && !P.result && now >= P.tArr + WIN.foul + 5) resolve(inZoneFinal() ? "strike" : "ball");
     // 날아가는 공
     if (P.hit) {
@@ -699,7 +838,7 @@
         }
         h.x += h.vx * dt / 2; h.y += h.vy * dt / 2; h.d += h.vd * dt / 2; h.vy -= 9.8 * dt / 2;
       }
-      h.trail.push({ x: h.x, y: h.y, d: h.d }); if (h.trail.length > 14) h.trail.shift();
+      h.trail.push({ x: h.x, y: h.y, d: h.d }); if (h.trail.length > (P.result === "hr" ? 70 : 14)) h.trail.shift();
       watchFlight();
     }
     for (const f of fx) { f.t += 1 / 60; f.x += f.vx; f.y += f.vy; f.vy += 0.05; }
@@ -1151,6 +1290,8 @@
     contact: { th: 58, hth: 82, hip: V(0.04, 0.81, 0.09), hands: V(0.26, 1.0, 0.12),   bat: V(0.96, -0.08, 0.28),  ff: V(0.04, 0, 0.46), bf: V(0.07, 0.07, -0.3) },
     extend:  { th: 90, hth: 95, hip: V(0.04, 0.83, 0.1),  hands: V(0.22, 1.1, 0.42),   bat: V(0.28, 0.12, 0.96),   ff: V(0.04, 0, 0.46), bf: V(0.12, 0.12, -0.24) },
     finish:  { th: 116, hth: 100, hip: V(0.03, 0.86, 0.1), hands: V(-0.12, 1.44, 0.3), bat: V(-0.82, 0.42, -0.24), ff: V(0.04, 0, 0.46), bf: V(0.14, 0.14, -0.2) },
+    // 번트: 투수 쪽으로 몸을 열고 배트를 눕혀 앞으로 내민다
+    bunt:    { th: 72, hth: 50, hip: V(0.03, 0.74, 0.06), hands: V(0.16, 1.12, 0.22), bat: V(0.96, 0.16, 0.2), ff: V(0.12, 0, 0.42), bf: V(0.06, 0, -0.3) },
     // 판정이 난 뒤 배트를 내리고 카메라 쪽으로 몸을 돌려 표정을 보인다
     react:   { th: -38, hth: -12, hip: V(0, 0.85, 0),     hands: V(0.06, 1.02, -0.2), bat: V(0.18, -0.95, -0.08), ff: V(0.02, 0, 0.38), bf: V(0, 0, -0.36) },
   };
@@ -1158,6 +1299,11 @@
     const t = now;
     const idle = { ...BK_.stance, bat: add(BK_.stance.bat, V(0, 0, Math.sin(t / 260) * 0.12)), hip: add(BK_.stance.hip, V(0, Math.sin(t / 520) * 0.008, 0)) };
     if (!P) return idle;
+    if (P.bunt) {
+      const keys = [[P.buntT, idle], [P.buntT + 220, BK_.bunt]];
+      if (P.buntDone != null) keys.push([P.buntDone + 650, BK_.bunt], [P.buntDone + 1100, BK_.react]);
+      return poseAt(keys, t);
+    }
     if (P.swung) {
       const s = P.swingT;
       const keys = [[s, BK_.load], [s + 40, BK_.launch], [s + 75, BK_.contact], [s + 125, BK_.extend], [s + 300, BK_.finish]];
@@ -1319,6 +1465,7 @@
   function drawHitBall(c) {
     if (!P || !P.hit) return;
     const h = P.hit;
+    if (P.result === "hr") return drawHrBall(c, h);
     for (let i = 0; i < h.trail.length; i++) {
       const s = ballScreen(h.trail[i]);
       if (h.trail[i].d < 0.6) continue;
@@ -1331,6 +1478,87 @@
     drawBallAt(c, s, Math.max(1.4, 0.06 * s.k));
   }
 
+  // 홈런: 금빛 혜성 꼬리를 끌고 밤하늘 깊숙이 사라진다 → 반짝 별 하나
+  const HR_VANISH = 1500;
+  function drawHrBall(c, h) {
+    const gone = hrFx && now - hrFx.at > HR_VANISH;
+    const pts = h.trail.filter(q => q.d >= 0.6).map(ballScreen);
+    if (pts.length > 1) {
+      c.save(); c.globalCompositeOperation = "lighter"; c.lineCap = "round";
+      const fade = gone ? Math.max(0, 1 - (now - hrFx.at - HR_VANISH) / 500) : 1;
+      for (let i = 1; i < pts.length; i++) {
+        const u = i / pts.length, a = pts[i - 1], b = pts[i], w = Math.max(1.5, 0.05 * b.k) * (0.6 + u * 1.6);
+        c.strokeStyle = `rgba(255,190,60,${u * 0.35 * fade})`; c.lineWidth = w * 3.2;
+        c.beginPath(); c.moveTo(a.sx, a.sy); c.lineTo(b.sx, b.sy); c.stroke();
+        c.strokeStyle = `rgba(255,248,220,${u * 0.85 * fade})`; c.lineWidth = w;
+        c.beginPath(); c.moveTo(a.sx, a.sy); c.lineTo(b.sx, b.sy); c.stroke();
+      }
+      c.restore();
+    }
+    if (h.d < 0.6 || gone) return;
+    const s = ballScreen(h), r = Math.max(2.2, 0.06 * s.k), pulse = 1 + Math.sin(now / 45) * 0.25;
+    const g = c.createRadialGradient(s.sx, s.sy, 0, s.sx, s.sy, r * 5 * pulse);
+    g.addColorStop(0, "rgba(255,240,180,.9)"); g.addColorStop(1, "rgba(255,170,40,0)");
+    c.fillStyle = g; c.beginPath(); c.arc(s.sx, s.sy, r * 5 * pulse, 0, 7); c.fill();
+    c.fillStyle = "#fffdf2"; c.beginPath(); c.arc(s.sx, s.sy, r, 0, 7); c.fill();
+    if (hrFx) hrFx.last = s;
+  }
+  function star(c, x, y, r, col) {
+    c.fillStyle = col; c.beginPath();
+    for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 - Math.PI / 2, q = i % 2 ? r * 0.22 : r; c.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); }
+    c.closePath(); c.fill();
+  }
+  function drawHrFx(c) {
+    if (!hrFx) return;
+    const e = now - hrFx.at;
+    if (e > 3200) { hrFx = null; return; }
+    // 펜스를 넘는 순간: 금빛 고리 두 겹
+    if (e < 600 && hrFx.fenceAt) {
+      const f = hrFx.fenceAt;
+      for (const [d, k] of [[0, 1], [120, 0.6]]) {
+        const u = (e - d) / 480; if (u < 0 || u > 1) continue;
+        c.save(); c.globalAlpha = 1 - u; c.strokeStyle = "#ffd84a"; c.lineWidth = 4 * (1 - u) + 1;
+        c.beginPath(); c.arc(f.sx, f.sy, 6 + u * 60 * k, 0, 7); c.stroke(); c.restore();
+      }
+    }
+    // 사라지는 자리에서 별이 반짝
+    const se = e - HR_VANISH;
+    if (se > 0 && se < 900 && hrFx.last) {
+      const u = se / 900, r = 4 + Math.sin(u * Math.PI) * 18, l = hrFx.last;
+      c.save(); c.globalCompositeOperation = "lighter"; c.globalAlpha = Math.sin(u * Math.PI);
+      c.translate(l.sx, l.sy); c.rotate(u * 0.8);
+      star(c, 0, 0, r, "#fff6c8"); c.rotate(Math.PI / 4); star(c, 0, 0, r * 0.55, "#ffd84a");
+      c.restore();
+    }
+    // 비거리: 숫자가 올라가며 찍힌다
+    if (e > 250) {
+      const u = Math.min(1, (e - 250) / 700), d = Math.round(hrFx.dist * (1 - Math.pow(1 - u, 3)));
+      c.save(); c.globalAlpha = e > 2700 ? Math.max(0, (3200 - e) / 500) : 1;
+      c.textAlign = "center"; c.font = "bold 18px sans-serif"; c.lineWidth = 5; c.strokeStyle = "rgba(0,0,0,.7)";
+      c.strokeText("비거리", W / 2 - 46, 392); c.fillStyle = "#e8ecf5"; c.fillText("비거리", W / 2 - 46, 392);
+      c.font = "34px 'Black Han Sans', sans-serif"; c.lineWidth = 7;
+      c.strokeText(`${d}m`, W / 2 + 32, 396); c.fillStyle = "#ffd84a"; c.fillText(`${d}m`, W / 2 + 32, 396);
+      c.restore();
+    }
+  }
+  // 도루 때 포수가 2루(또는 3루)로 던지는 송구
+  const BASE3D = [null, { x: 0, d: PLATE_D + 38.8 }, { x: -19.4, d: PLATE_D + 19.4 }];
+  function drawThrow(c) {
+    if (!throwFx) return;
+    const u = (now - throwFx.t0) / THROW_MS;
+    if (u > 1.5) { throwFx = null; return; }
+    const to = BASE3D[throwFx.to]; if (!to) return;
+    const D0 = PLATE_D + 0.6;
+    const at = k => { k = Math.min(1, k); return { x: to.x * k, y: 1.6 + Math.sin(k * Math.PI) * 2.4 - 1.2 * k, d: D0 + (to.d - D0) * k }; };
+    c.save(); c.lineCap = "round";
+    const fade = u > 1 ? 1 - (u - 1) / 0.5 : 1, a0 = Math.max(0, u - 0.45);
+    c.beginPath();
+    for (let k = a0; k <= Math.min(1, u) + 1e-6; k += 0.02) { const q = ballScreen(at(k)); k === a0 ? c.moveTo(q.sx, q.sy) : c.lineTo(q.sx, q.sy); }
+    c.strokeStyle = `rgba(255,214,80,${0.35 * fade})`; c.lineWidth = 7; c.stroke();
+    c.strokeStyle = `rgba(255,250,230,${0.9 * fade})`; c.lineWidth = 2.5; c.stroke();
+    if (u < 1) { const s = ballScreen(at(u)); drawBallAt(c, s, Math.max(2.4, 0.06 * s.k)); }
+    c.restore();
+  }
   function led(c, x, y, on, col) {
     c.fillStyle = on ? col : "#2b2f3d"; c.beginPath(); c.arc(x, y, 6.5, 0, 7); c.fill();
     if (on) { c.fillStyle = "rgba(255,255,255,.35)"; c.beginPath(); c.arc(x - 2, y - 2, 2.2, 0, 7); c.fill(); }
@@ -1350,6 +1578,26 @@
     const base = (x, y, on) => { c.save(); c.translate(x, y); c.rotate(Math.PI / 4); c.fillStyle = on ? "#ffcf3a" : "#2b2f3d"; c.fillRect(-sz / 2, -sz / 2, sz, sz); c.restore(); };
     base(cx + 22, cy, G.bases[0]); base(cx, cy - 22, G.bases[1]); base(cx - 22, cy, G.bases[2]);
     c.fillStyle = "#c8cbe0"; c.beginPath(); c.moveTo(cx, cy + 26); c.lineTo(cx - 6, cy + 20); c.lineTo(cx + 6, cy + 20); c.fill();
+    const BP = [[cx + 22, cy], [cx, cy - 22], [cx - 22, cy]];
+    // 뛰는 주자: 베이스 사이를 달린다 (판정이 나면 사라짐)
+    const st = P && P.steal;
+    if (st && !st.cancel && !(stealFx && stealFx.at >= st.t0)) {
+      const end = throwFx && throwFx.t0 >= st.t0 ? throwFx.t0 + THROW_MS : P.tArr + 700;
+      const k = Math.min(1, Math.max(0, (now - st.t0) / (end - st.t0))), a = BP[st.from], b = BP[st.from + 1];
+      const x = a[0] + (b[0] - a[0]) * k, y = a[1] + (b[1] - a[1]) * k;
+      c.fillStyle = "#7ee08a"; c.beginPath(); c.arc(x, y, 5, 0, 7); c.fill();
+      c.strokeStyle = "rgba(126,224,138,.5)"; c.lineWidth = 2; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(x, y); c.stroke();
+    }
+    if (stealFx) {
+      const e = now - stealFx.at;
+      if (e > 1100) stealFx = null;
+      else {
+        const [x, y] = BP[stealFx.base], u = e / 1100, col = stealFx.ok ? "126,224,138" : "255,75,62";
+        c.strokeStyle = `rgba(${col},${1 - u})`; c.lineWidth = 3; c.beginPath(); c.arc(x, y, 8 + u * 16, 0, 7); c.stroke();
+        c.font = "bold 11px sans-serif"; c.textAlign = "center"; c.fillStyle = `rgba(${col},${1 - u})`;
+        c.fillText(stealFx.ok ? "SAFE" : "OUT", x, y - 14 - u * 6);
+      }
+    }
     // 구속·구질
     c.textAlign = "right";
     c.font = "bold 13px sans-serif"; c.fillStyle = "#c8cbe0"; c.fillText(`LV ${G.level}`, W - 18, 26);
@@ -1411,11 +1659,13 @@
     drawZone(ctx);
     drawPitchTrack(ctx);
     drawPitchBall(ctx, hand);
+    drawThrow(ctx);
     drawHitBall(ctx);
     drawBatter(ctx);
     for (const f of fx) { ctx.globalAlpha = 1 - f.t / f.life; ctx.fillStyle = f.col; ctx.fillRect(f.x, f.y, 3, 3); }
     ctx.globalAlpha = 1;
     drawImpact(ctx);
+    drawHrFx(ctx);
     if (shaking) ctx.restore();
     if (jolt) { const e = performance.now() - jolt.at; if (e < 140) { ctx.fillStyle = `rgba(255,252,235,${jolt.flash * (1 - e / 140)})`; ctx.fillRect(0, 0, W, H); } }
     if (state !== "title" && G) drawBoard(ctx);
@@ -1426,6 +1676,7 @@
   let acc = 0, last = performance.now();
   function frame(t) {
     now = gameNow();
+    updateActs();
     if (paused) { last = t; draw(); requestAnimationFrame(frame); return; }
     if (stopAt) {
       if (performance.now() - stopAt < stopLen) { now = stopAt - pauseAcc; last = t; draw(); requestAnimationFrame(frame); return; }
@@ -1445,7 +1696,7 @@
   requestAnimationFrame(frame);
 
   // 테스트용 읽기 훅
-  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), pickPitch: L => pickPitch(L) };
+  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), setBases: b => { G.bases = b.slice(); }, setOuts: n => { G.outs = n; }, pickPitch: L => pickPitch(L) };
 })();
 </script>
 </body>
