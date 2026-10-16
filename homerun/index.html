@@ -520,6 +520,8 @@
     if (far > 0.2) tier = 5; else if (far > 0) tier = Math.min(5, tier + (far > 0.1 ? 2 : 1));
     // 어려운 구질일수록 정타가 조금 어렵다
     if (tier < 3 && (P.type === "knuckle" || P.type === "fork") && Math.random() < 0.25) tier++;
+    // 2루타는 드물게: 2루타 타이밍이라도 열에 일곱은 단타로 끝난다 (안타 중 2루타 10% 이하)
+    if (tier === 1 && Math.random() < 0.7) tier = 2;
     const kinds = ["hr", "double", "single", "out", "foul", "whiff"];
     P.pending = kinds[tier];
     buzz(P.pending, Math.max(0, Math.min(P.tArr + 8, now + 30) - now));
@@ -537,7 +539,14 @@
     } else cancelSteal();
     switch (kind) {
       // 맞힌 공: 지금은 소리와 함께 날리기만 하고, 판정은 공이 떨어지거나 넘어갈 때 낸다
-      case "hr":     sfx.crack(1.4); impact("hr");  sfx.crowd(0.18, 1.2); launch(rand(48, 54), rand(31, 37), (late ? 1 : -1) * rand(2, 20)); P.hrDist = Math.round(rand(118, 148)); break;
+      case "hr": {
+        // 비거리를 먼저 정하고 그만큼 날아갈 속도를 거꾸로 구한다. 낮고 빠른 포물선이라 공이 화면에서 안 사라지고
+        // 외야를 가로질러 날아가다 담장 위를 넘어 관중석에 떨어진다 (판정은 담장을 넘는 그 순간)
+        sfx.crack(1.4); impact("hr"); sfx.crowd(0.18, 1.2);
+        const R = rand(130, 150), ang = rand(18, 21), sp = (late ? 1 : -1) * rand(2, 15);
+        launch(Math.sqrt(R * 9.8 / Math.sin(2 * ang * Math.PI / 180)), ang, sp); P.hrDist = Math.round(R);
+        break;
+      }
       case "double": sfx.crack(1.1); impact("double");  sfx.crowd(0.14, 1.0); launch(rand(33, 38), rand(16, 24), (late ? 1 : -1) * rand(14, 34)); break;
       case "single": sfx.crack(0.95); impact("single"); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
       case "out": {
@@ -851,6 +860,7 @@
       }
       h.trail.push({ x: h.x, y: h.y, d: h.d }); if (h.trail.length > (P.result === "hr" ? 70 : 14)) h.trail.shift();
       watchFlight();
+      if (P.called === "hr" && hrFx && hrFx.vanishAt == null && h.vy < 0 && h.y <= 2.5) hrFx.vanishAt = now;   // 관중석에 떨어짐
     }
     for (const f of fx) { f.t += 1 / 60; f.x += f.vx; f.y += f.vy; f.vy += 0.05; }
     fx = fx.filter(f => f.t < f.life);
@@ -1495,11 +1505,11 @@
   // 홈런: 금빛 혜성 꼬리를 끌고 밤하늘 깊숙이 사라진다 → 반짝 별 하나
   const HR_VANISH = 1500;
   function drawHrBall(c, h) {
-    const gone = hrFx && now - hrFx.at > HR_VANISH;
+    const vt = hrFx ? (hrFx.vanishAt != null ? hrFx.vanishAt : hrFx.at + HR_VANISH) : Infinity, gone = now > vt;
     const pts = h.trail.filter(q => q.d >= 0.6).map(ballScreen);
     if (pts.length > 1) {
       c.save(); c.globalCompositeOperation = "lighter"; c.lineCap = "round";
-      const fade = gone ? Math.max(0, 1 - (now - hrFx.at - HR_VANISH) / 500) : 1;
+      const fade = gone ? Math.max(0, 1 - (now - vt) / 500) : 1;
       for (let i = 1; i < pts.length; i++) {
         const u = i / pts.length, a = pts[i - 1], b = pts[i], w = Math.max(1.5, 0.05 * b.k) * (0.6 + u * 1.6);
         c.strokeStyle = `rgba(255,190,60,${u * 0.35 * fade})`; c.lineWidth = w * 3.2;
@@ -1536,7 +1546,7 @@
       }
     }
     // 사라지는 자리에서 별이 반짝
-    const se = e - HR_VANISH;
+    const se = now - (hrFx.vanishAt != null ? hrFx.vanishAt : hrFx.at + HR_VANISH);
     if (se > 0 && se < 900 && hrFx.last) {
       const u = se / 900, r = 4 + Math.sin(u * Math.PI) * 18, l = hrFx.last;
       c.save(); c.globalCompositeOperation = "lighter"; c.globalAlpha = Math.sin(u * Math.PI);
