@@ -381,7 +381,7 @@
   const later = (fn, ms) => timers.push({ at: now + ms, fn });
 
   function newGame() {
-    G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], pitches: 0, level: 1, hits: 0, hr: 0, pool: ["fast", "power"], motions: ["windup"], batters: 1, combo: 0 };
+    G = { runs: 0, outs: 0, balls: 0, strikes: 0, bases: [0, 0, 0], pitches: 0, level: 1, hits: 0, hr: 0, pool: ["fast", "power"], motions: ["windup"], batters: 1, combo: 0, hits0: 0, hitRun: 0, hrRun: 0, standAt: 0 };
     fx = []; msg = null; P = null; timers = [];
     nextPitch(900);
   }
@@ -522,6 +522,8 @@
     if (tier < 3 && (P.type === "knuckle" || P.type === "fork") && Math.random() < 0.25) tier++;
     // 2루타는 드물게: 2루타 타이밍이라도 열에 일곱은 단타로 끝난다 (안타 중 2루타 10% 이하)
     if (tier === 1 && Math.random() < 0.7) tier = 2;
+    // 다섯 타자 연속 홈런은 없다: 네 타자 연속 홈런 뒤엔 완벽하게 맞혀도 담장을 맞고 나오는 2루타
+    if (tier === 0 && G.hrRun >= 4) tier = 1;
     const kinds = ["hr", "double", "single", "out", "foul", "whiff"];
     P.pending = kinds[tier];
     buzz(P.pending, Math.max(0, Math.min(P.tArr + 8, now + 30) - now));
@@ -603,7 +605,7 @@
       case "foul":
         if (G.strikes < 2) G.strikes++;
         say("파울!"); banner("파울", "", "#d7dbe6", 1000); feel("batter", "annoyed", 1100);
-        nextPitch(1300); break;
+        nextPitch(1300); lastStand(); break;
     }
   }
   function watchFlight() {
@@ -622,7 +624,7 @@
     if (G.strikes >= 3) { out(swinging ? "헛스윙 삼진" : "루킹 삼진", true); return; }
     say(swinging ? "헛스윙!" : "스트라이크!"); feel("batter", swinging ? "annoyed" : "shock", 1000); feel("pitcher", "smirk", 1000);
     banner(swinging ? "헛스윙" : "스트라이크", "", "#ffcf3a", 900);
-    nextPitch();
+    nextPitch(); lastStand();
   }
   function out(label, k) {
     G.outs++;
@@ -640,7 +642,37 @@
     if (G.outs >= 3) { G.outs = 3; queuedAt = 0; later(gameOver, 1800); P.done = true; return true; }
     return false;
   }
-  function endPA() { G.balls = 0; G.strikes = 0; G.batters++; nextPitch(2200); }
+  function endPA() {
+    // 타석 결과로 연속 기록을 잇는다: 홈런 뒤 홈런 = 백투백, 안타 뒤 안타 = 연속 안타
+    const hit = G.hits > G.hits0, hr = hit && P && P.called === "hr";
+    G.hits0 = G.hits; G.hitRun = hit ? G.hitRun + 1 : 0; G.hrRun = hr ? G.hrRun + 1 : 0;
+    let wait = 2200;
+    if (G.hrRun >= 2) {
+      const n = Math.min(G.hrRun, 4), name = ["백투백 홈런!", "백투백투백!", "백투백투백투백!"][n - 2];
+      hype(["b2b", "b2b3", "b2b4"][n - 2], name, `${n}타자 연속 홈런`, "#ffcf3a", 2300); wait = 4000;
+    }
+    else if (hit && G.hitRun >= 2) { hype("streak", "연속 안타!", `${G.hitRun}타자 연속 안타`, "#7ee08a", hr ? 2300 : 1400); wait = hr ? 4000 : 3200; }
+    G.balls = 0; G.strikes = 0; G.batters++; nextPitch(wait);
+  }
+  // 흥분한 중계: 녹음이 있으면 그 목소리로 (없으면 자막과 함성만 — 기계 목소리는 섞지 않는다)
+  function hype(key, big, small, color, delay) {
+    later(() => {
+      if (state !== "play") return;
+      if (mode === "all" && VOICE_MP3[key]) playClip(key);
+      sfx.crowd(0.32, 1.8); banner(big, small, color, 1700);
+    }, delay);
+  }
+  // 2아웃 2스트라이크: 타자마다 한 번, 마지막 응원
+  function lastStand() {
+    if (state !== "play" || G.outs !== 2 || G.strikes !== 2 || G.standAt === G.batters) return;
+    G.standAt = G.batters;
+    if (queuedAt) queuedAt = Math.max(queuedAt, now + 2900);
+    later(() => {
+      if (state !== "play" || G.outs !== 2 || G.strikes !== 2) return;
+      if (mode === "all" && VOICE_MP3.last) playClip("last");
+      feel("batter", "focus", 1800); banner("야구는 지금부터!", "2아웃 2스트라이크", "#7ee08a", 1700);
+    }, 1000);
+  }
   function advance(n) {
     let runs = 0;
     const b = G.bases;
@@ -711,7 +743,7 @@
         banner("도루 성공!", `${to + 1}루 세이프`, "#7ee08a", 1400);
       } else {
         sfx.mitt(); sfx.groan();
-        retire(1, "도루 실패", `주루사 · ${Math.min(3, G.outs + 1)} 아웃`);
+        if (!retire(1, "도루 실패", `주루사 · ${Math.min(3, G.outs + 1)} 아웃`)) later(lastStand, 600);
       }
     }, THROW_MS);
   }
@@ -731,7 +763,7 @@
       P.result = "bfoul"; launch(rand(5, 8), rand(25, 45), 180 + rand(-40, 40));
       later(() => {
         if (G.strikes >= 2) { out("번트 파울 삼진", true); return; }
-        G.strikes++; say("파울!"); banner("번트 파울", "", "#d7dbe6", 1000); nextPitch(1300);
+        G.strikes++; say("파울!"); banner("번트 파울", "", "#d7dbe6", 1000); nextPitch(1300); lastStand();
       }, 500);
       return;
     }
@@ -1720,7 +1752,7 @@
   requestAnimationFrame(frame);
 
   // 테스트용 읽기 훅
-  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), setBases: b => { G.bases = b.slice(); }, setOuts: n => { G.outs = n; }, pickPitch: L => pickPitch(L) };
+  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), setBases: b => { G.bases = b.slice(); }, setOuts: n => { G.outs = n; }, get queuedAt() { return queuedAt; }, get msg() { return msg; }, pickPitch: L => pickPitch(L) };
 })();
 </script>
 </body>
