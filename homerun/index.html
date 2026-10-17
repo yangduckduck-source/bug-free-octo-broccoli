@@ -91,7 +91,7 @@
   <div class="btns"><button type="button" id="resume">계속하기</button><button type="button" id="restart" class="ghost">처음부터</button></div>
 </div>
 
-<script src="../common/fab.js?v=4"></script>
+<script src="../common/fab.js?v=5"></script>
 <script>
 (() => {
   "use strict";
@@ -421,6 +421,8 @@
 
   // ================= 상태 =================
   let state = "title";     // title | play | over
+  // 홈런 득점 버그(2026-10)로 부풀려진 최고 기록을 한 번만 지운다
+  if (store.get("homerun.reset1") !== "1") { store.set("homerun.best", "0"); store.set("homerun.reset1", "1"); }
   let best = Number(store.get("homerun.best")) || 0;
   let G, P, fx, msg, now = performance.now();
   let paused = false, pauseAcc = 0, pauseStart = 0;

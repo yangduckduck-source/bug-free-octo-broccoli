@@ -21,6 +21,8 @@
   // 예전 장부(산 꾸미기가 영구였던 때): 코팅 20판으로 바꾸어 준다
   if (!S.ver) { S.uses = S.uses || {}; for (const id of S.owned || []) S.uses[id] = (S.uses[id] || 0) + 20; S.owned = []; S.ver = 2; }
   S.uses = S.uses || {};
+  // 야구왕 홈런 득점 버그로 부풀려진 명예의 전당 기록을 한 번만 지운다
+  if (!S.bbReset) { if (S.best) delete S.best.baseball; S.bbReset = 1; }
 
   const GAMES = { chip: "칩 쌓기", bugs: "버그 잡기", baseball: "야구왕", zero: "ZERO RUN", nn: "99" };
 
