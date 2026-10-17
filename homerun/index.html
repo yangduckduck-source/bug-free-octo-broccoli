@@ -374,6 +374,26 @@
 
   // ================= 판정 창 (ms) =================
   // 버튼을 누른 순간과 공이 홈에 닿는 순간의 차이
+  // ================= 타순 =================
+  // 1~9번이 차례로 돌아온다(9번 다음은 다시 1번). pow: 홈런 판정 폭 배수, con: 안타 판정 폭 배수,
+  // spd: 발(도루·내야 안타·번트 안타는 빠를수록, 병살은 느릴수록 잘 난다), w·h: 체격(가로·세로), suit: 방진복 색
+  const WHITE = null, ORANGE = { jersey: "#ff9b45", pants: "#f48c36", under: "#f48c36", sock: "#e07b2a", shoe: "#c96a22", belt: "#fff2e2", trim: "#fff2e2" };
+  const LINEUP = [
+    null,
+    { role: "발 빠른 타자", pow: 0.55, con: 1.12, spd: 1.0,  w: 0.85, h: 1.0, suit: WHITE },
+    { role: "발 빠른 타자", pow: 0.6,  con: 1.1,  spd: 0.85, w: 0.88, h: 0.94, suit: WHITE },
+    { role: "장타자", pow: 1.25, con: 1.05, spd: 0.35, w: 1.2, h: 1.05, suit: WHITE },
+    { role: "거포",   pow: 1.55, con: 0.98, spd: 0.1,  w: 1.5, h: 1.14, suit: ORANGE },
+    { role: "장타자", pow: 1.25, con: 1.0,  spd: 0.3,  w: 1.25, h: 1.03, suit: WHITE },
+    { role: "무난한 타자",   pow: 0.85, con: 1.0,  spd: 0.5,  w: 1.0, h: 1.0,  suit: WHITE },
+    { role: "무난한 타자",   pow: 0.85, con: 1.0,  spd: 0.45, w: 1.06, h: 0.97, suit: WHITE },
+    { role: "무난한 타자",   pow: 0.8,  con: 0.97, spd: 0.5,  w: 0.97, h: 1.03, suit: WHITE },
+    { role: "하위 타선",   pow: 0.4,  con: 0.8,  spd: 0.4,  w: 0.82, h: 0.9, suit: WHITE },
+  ];
+  const slotOf = n => ((n - 1) % 9) + 1;            // n번째 타석 → 타순
+  const LU = () => LINEUP[P ? P.no : slotOf((G && G.batters) || 1)] || LINEUP[1];
+  const spdOf = slot => (LINEUP[slot] || LINEUP[6]).spd;
+
   const WIN = { hr: 18, double: 30, single: 44, out: 62, foul: 95 };
 
   // ================= 상태 =================
@@ -443,7 +463,7 @@
       type, motion, kmh, inZone, tx, ty, rel, flight, seed: rand(0, 6),
       tSet: t0, tLift: t0 + setT, tHold: t0 + setT + lift, tStride: t0 + setT + lift + hold, tRel: t0 + setT + lift + hold + stride,
       swung: false, swingT: 0, result: null, done: false, hit: null, brk: tx < 0 ? -1 : 1,
-      no: G.batters,          // 지금 타석에 선 타자의 등번호 (판정이 나도 다음 공이 올 때까지 그대로)
+      no: slotOf(G.batters),  // 지금 타석에 선 타자의 타순 = 등번호 (판정이 나도 다음 공이 올 때까지 그대로)
       clutch: G.outs === 2 && G.strikes === 2,   // 2아웃 2스트라이크: 이 공은 슬로 모션
     };
     P.tArr = P.tRel + flight;
@@ -528,12 +548,14 @@
     const far = Math.max(ZONE.x0 - P.tx, P.tx - ZONE.x1, ZONE.y0 - P.ty, P.ty - ZONE.y1, 0);   // 존에서 벗어난 거리(m)
     P.delta = delta;
     // 존 밖 공은 맞혀도 한 단계씩 나빠지고, 너무 멀면 헛스윙
-    let tier = ad <= WIN.hr ? 0 : ad <= WIN.double ? 1 : ad <= WIN.single ? 2 : ad <= WIN.out ? 3 : ad <= WIN.foul ? 4 : 5;
+    // 타자마다 판정 폭이 다르다: 장타자는 홈런 폭이 넓고, 약한 타자는 안타 폭도 좁다
+    const L = LU(), wHr = WIN.hr * L.pow, wDb = Math.max(wHr + 4, WIN.double * L.con), wSg = Math.max(wDb + 6, WIN.single * L.con);
+    let tier = ad <= wHr ? 0 : ad <= wDb ? 1 : ad <= wSg ? 2 : ad <= WIN.out ? 3 : ad <= WIN.foul ? 4 : 5;
     if (far > 0.2) tier = 5; else if (far > 0) tier = Math.min(5, tier + (far > 0.1 ? 2 : 1));
     // 어려운 구질일수록 정타가 조금 어렵다
     if (tier < 3 && (P.type === "knuckle" || P.type === "fork") && Math.random() < 0.25) tier++;
     // 2루타는 드물게: 2루타 타이밍이라도 열에 일곱은 단타로 끝난다 (안타 중 2루타 10% 이하)
-    if (tier === 1 && Math.random() < 0.7) tier = 2;
+    if (tier === 1 && Math.random() < (L.pow >= 1.2 ? 0.5 : L.pow < 0.5 ? 0.85 : 0.7)) tier = 2;
     // 다섯 타자 연속 홈런은 없다: 네 타자 연속 홈런 뒤엔 완벽하게 맞혀도 담장을 맞고 나오는 2루타
     if (tier === 0 && G.hrRun >= 4) tier = 1;
     const kinds = ["hr", "double", "single", "out", "foul", "whiff"];
@@ -547,7 +569,7 @@
   function resolve(kind) {
     // 병살: 주자가 있고 아웃이 하나 이하일 때 맞힌 공(홈런·파울 빼고)의 5%는 내야 땅볼 병살이 된다
     const b0 = G.bases;
-    if ((kind === "out" || kind === "single" || kind === "double") && (b0[0] || b0[1] || b0[2]) && G.outs <= 1 && !P.steal && Math.random() < 0.05) { kind = "out"; P.dp = true; }
+    if ((kind === "out" || kind === "single" || kind === "double") && (b0[0] || b0[1] || b0[2]) && G.outs <= 1 && !P.steal && Math.random() < 0.075 * (1.15 - 0.9 * LU().spd)) { kind = "out"; P.dp = true; }
     P.result = kind; P.resAt = now;
     const late = P.delta > 0;
     if (kind === "ball" || kind === "strike" || kind === "whiff") {
@@ -614,6 +636,11 @@
           sfx.mitt(); later(sfx.mitt, 260);
           if (!retire(2, "병살타!", `${Math.min(3, G.outs + 2)} 아웃`, "병살!")) endPA();
           break;
+        }
+        // 발 빠른 타자는 내야 땅볼을 안타로 만든다
+        if (!P.fly && Math.random() < LU().spd * 0.22) {
+          sfx.crowd(0.2, 1.2); advance(1); G.hits++; say("안타!", 0.15); feel("batter", "joy", 1600);
+          banner("내야 안타!", "발로 만든 안타", "#ffffff", 1400); endPA(); break;
         }
         out(P.fly ? "뜬공 아웃" : "땅볼 아웃"); break;
       }
@@ -690,15 +717,15 @@
   function advance(n) {
     let runs = 0;
     const b = G.bases;
-    for (let i = 2; i >= 0; i--) if (b[i]) { b[i] = 0; if (i + n >= 3) runs++; else b[i + n] = 1; }
-    b[n - 1] = 1;
+    for (let i = 2; i >= 0; i--) if (b[i]) { const r = b[i]; b[i] = 0; if (i + n >= 3) runs++; else b[i + n] = r; }
+    b[n - 1] = P ? P.no : 1;          // 베이스에는 그 주자의 타순을 적어 둔다 (도루 때 발 빠르기)
     G.runs += runs;
     if (runs) later(() => banner(`${runs}점 득점!`, "", "#7ee08a", 1200), 900);
   }
   function advanceWalk() {
     const b = G.bases;
-    if (b[0]) { if (b[1]) { if (b[2]) G.runs++; b[2] = 1; } b[1] = 1; }
-    b[0] = 1;
+    if (b[0]) { if (b[1]) { if (b[2]) G.runs++; b[2] = b[1]; } b[1] = b[0]; }
+    b[0] = P ? P.no : 1;
   }
 
   // ================= 작전: 도루·번트 =================
@@ -746,14 +773,16 @@
     if (state !== "play" || G.outs >= 3) return;
     const b = G.bases, to = st.from + 1;
     throwFx = { t0: now, to };
-    const ok = Math.random() < (P.type === "power" ? 0.08 : 0.3);
+    // 성공률: 보통 주자 30% 안팎, 발 빠른 1번은 45%, 느린 4번은 18%. 강속구면 그 4분의 1
+    const runner = b[st.from], pOk = (0.15 + 0.3 * spdOf(runner)) * (P.type === "power" ? 0.27 : 1);
+    const ok = Math.random() < pOk;
     later(() => {
       if (state !== "play") return;
       b[st.from] = 0;
-      if (st.double) { b[0] = 0; b[1] = 1; }           // 더블 스틸: 뒤 주자는 살아서 한 칸
+      if (st.double) { b[1] = b[0]; b[0] = 0; }        // 더블 스틸: 뒤 주자는 살아서 한 칸
       stealFx = { base: to, ok, at: now };
       if (ok) {
-        b[to] = 1; sfx.crowd(0.3, 1.6); say("세이프!", 0.1); feel("batter", "happy", 1200);
+        b[to] = runner; sfx.crowd(0.3, 1.6); say("세이프!", 0.1); feel("batter", "happy", 1200);
         banner("도루 성공!", `${to + 1}루 세이프`, "#7ee08a", 1400);
       } else {
         sfx.mitt(); sfx.groan();
@@ -789,17 +818,17 @@
     const b = G.bases, any = b[0] || b[1] || b[2], r = Math.random();
     P.called = "bunt"; P.calledAt = now;
     if (!any) {                                                             // 기습 번트
-      if (r < 0.05) { advance(1); G.hits++; sfx.crowd(0.2, 1.2); say("안타!", 0.15); feel("batter", "joy", 1800); banner("기습 번트 안타!", "", "#ffffff", 1500); endPA(); }
+      if (r < 0.05 * (0.4 + 0.6 * LU().spd)) { advance(1); G.hits++; sfx.crowd(0.2, 1.2); say("안타!", 0.15); feel("batter", "joy", 1800); banner("기습 번트 안타!", "", "#ffffff", 1500); endPA(); }
       else out("번트 아웃");
       return;
     }
     // 번트 안타 4% · 희생 번트 70% · 선행 주자 아웃 16% · 번트 뜬공 10%
-    if (r < 0.04) { advance(1); G.hits++; sfx.crowd(0.2, 1.2); say("안타!", 0.15); feel("batter", "joy", 1800); banner("번트 안타!", "모두 세이프", "#ffffff", 1500); endPA(); return; }
+    if (r < 0.05 * (0.3 + 0.7 * LU().spd)) { advance(1); G.hits++; sfx.crowd(0.2, 1.2); say("안타!", 0.15); feel("batter", "joy", 1800); banner("번트 안타!", "모두 세이프", "#ffffff", 1500); endPA(); return; }
     if (r >= 0.9) { out("번트 뜬공"); return; }                              // 떠 버린 번트: 타자만 아웃, 주자는 그대로
     if (r >= 0.74) {                                                        // 선행 주자를 잡는다 (타자는 1루에)
       const lead = b[2] ? 2 : b[1] ? 1 : 0; b[lead] = 0;
-      for (let j = lead - 1; j >= 0; j--) if (b[j]) { b[j] = 0; b[j + 1] = 1; }
-      b[0] = 1;
+      for (let j = lead - 1; j >= 0; j--) if (b[j]) { b[j + 1] = b[j]; b[j] = 0; }
+      b[0] = P.no;
       if (!retire(1, "선행 주자 아웃", `${Math.min(3, G.outs + 1)} 아웃 · 타자는 1루`)) endPA();
       return;
     }
@@ -807,7 +836,7 @@
     const last = G.outs + 1 >= 3;
     if (!last) {
       let runs = 0;
-      for (let i = 2; i >= 0; i--) if (b[i]) { b[i] = 0; if (i === 2) runs++; else b[i + 1] = 1; }
+      for (let i = 2; i >= 0; i--) if (b[i]) { const r = b[i]; b[i] = 0; if (i === 2) runs++; else b[i + 1] = r; }
       G.runs += runs;
       if (runs) later(() => banner("스퀴즈 성공!", `${runs}점`, "#7ee08a", 1300), 1500);
     }
@@ -1430,12 +1459,15 @@
       lk: joint(fhp, p.ff, 0.47, add(hChest, V(0, 0, 0.25))), rk: joint(bhp, p.bf, 0.47, add(hChest, V(0, 0, -0.1))),
       lf: p.ff, rf: p.bf, lfo: norm(add(hChest, V(0, 0, 0.4))), rfo: norm(add(hChest, V(0, 0, -0.1))),
     };
-    const pr = makeProjector(BX, BD, 0.8);
-    const g0 = pr(V(0, 0, 0)); c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(g0.x, g0.y, 58, 11, 0, 0, 7); c.fill();
+    // 체격: 발밑을 기준으로 가로·세로를 늘이거나 줄인다 (팔다리 굵기도 가로 배율만큼)
+    const L = LU(), pr0 = makeProjector(BX, BD, 0.8), gb = pr0(V(0, 0, 0));
+    const pr = q => { const o = pr0(q); return { x: gb.x + (o.x - gb.x) * L.w, y: gb.y + (o.y - gb.y) * L.h, k: o.k * L.w }; };
+    const KIT = L.suit ? { ...BATTER_KIT, ...L.suit } : BATTER_KIT;
+    const g0 = pr(V(0, 0, 0)); c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(g0.x, g0.y, 58 * L.w, 11, 0, 0, 7); c.fill();
     const tip = add(grip, mul(bat, 0.86)), knob = add(grip, mul(bat, -0.06)), barrel = add(grip, mul(bat, 0.5));
     const pts = [head, add(head, V(0, 0.16, 0)), p.ff, p.bf, J.lk, J.rk, fsh, bsh, grip, tip, knob];
     const backVis = clamp(chest.z, 0, 1);          // 등이 카메라를 향한 정도 (옆으로 서 있으면 0)
-    figure(c, pr, pts, x => bodyParts(x, pr, J, BATTER_KIT, {
+    figure(c, pr, pts, x => bodyParts(x, pr, J, KIT, {
       lhand: () => ball3(x, pr, J.lw, 0.05, "#6c7cf0", 1.15),      // 보라빛 니트릴 장갑
       rhand: () => ball3(x, pr, J.rw, 0.05, "#6c7cf0", 1.15),
       torso: () => {
@@ -1665,6 +1697,17 @@
     c.fillStyle = on ? col : "#2b2f3d"; c.beginPath(); c.arc(x, y, 6.5, 0, 7); c.fill();
     if (on) { c.fillStyle = "rgba(255,255,255,.35)"; c.beginPath(); c.arc(x - 2, y - 2, 2.2, 0, 7); c.fill(); }
   }
+  // 전광판 아래: 지금 타석에 선 타자의 타순과 성격
+  function drawLineup(c) {
+    if (state !== "play" || !P) return;
+    const label = `${P.no}번 · ${LINEUP[P.no].role}`;
+    c.save(); c.font = "bold 13px sans-serif"; c.textAlign = "left"; c.textBaseline = "middle";
+    const w = c.measureText(label).width + 22;
+    c.fillStyle = "rgba(4,17,12,.72)"; c.fillRect(8, 120, w, 22);
+    c.fillStyle = P.no === 4 ? "#ff9b45" : "#5dffc3"; c.fillRect(8, 120, 3, 22);
+    c.fillStyle = "#e6fff4"; c.fillText(label, 18, 131);
+    c.restore();
+  }
   function drawBoard(c) {
     // 위쪽 전광판: B·S·O, 점수, 주자, 구속
     c.fillStyle = "#05070f"; c.fillRect(0, 0, W, 112);
@@ -1771,7 +1814,7 @@
     if (shaking) ctx.restore();
     drawSlow(ctx);
     if (jolt) { const e = performance.now() - jolt.at; if (e < 140) { ctx.fillStyle = `rgba(255,252,235,${jolt.flash * (1 - e / 140)})`; ctx.fillRect(0, 0, W, H); } }
-    if (state !== "title" && G) drawBoard(ctx);
+    if (state !== "title" && G) { drawBoard(ctx); drawLineup(ctx); }
     drawMsg(ctx);
   }
 
