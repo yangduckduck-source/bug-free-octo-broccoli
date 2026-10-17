@@ -34,6 +34,7 @@
 <body>
 <canvas id="c" aria-label="칩 쌓기 게임 화면. 칩이 지나갈 때 눌러서 아래 칩 위에 쌓는다."></canvas>
 <button id="snd" type="button">소리 켬</button>
+<script src="../common/fab.js"></script>
 <script>
 (() => {
   "use strict";
@@ -144,18 +145,23 @@
   const MILES = { 4: "HBM 첫 세대 4단", 8: "HBM3 8단", 12: "HBM3E 12단", 16: "HBM4 16단", 20: "세상에 없는 20단" };
   let state = "title", now = 0, last = performance.now();
   let stack = [], mover = null, falling = [], beams = [], rings = [], pops = [], sparks = [];
-  let combo = 0, best = +(store.get("hbm.best") || 0), overAt = 0, newBest = false, shake = 0, milestone = null;
+  let perfN = 0, maxCombo = 0, combo = 0, best = +(store.get("hbm.best") || 0), overAt = 0, newBest = false, shake = 0, milestone = null;
   const zero = { y: 0, vy: 0, squash: 0, mood: "idle", moodUntil: 0, lean: 0, fall: null, blinkAt: 2 };
 
+  // 상점 꾸미기: 칩 재질
+  const SKIN = window.FAB ? FAB.equipped("chip", "skin") : null;
   function tint(i) {
     // 층마다 아주 조금씩 색이 돈다: 아래는 짙은 청록, 위로 갈수록 민트에서 호박색 쪽으로
+    if (SKIN === "chip_gold") { const l = i % 2 ? 0 : 4; return { top: `hsl(44,70%,${36 + l}%)`, right: `hsl(40,72%,${24 + l}%)`, left: `hsl(36,70%,${16 + l}%)`, glow: "#ffe08a" }; }
+    if (SKIN === "chip_neon") { const l = i % 2 ? 0 : 4; return { top: `hsl(325,60%,${26 + l}%)`, right: `hsl(325,62%,${17 + l}%)`, left: `hsl(325,60%,${11 + l}%)`, glow: "#ff8fd0" }; }
+    if (SKIN === "chip_rainbow") { const h = (i * 28) % 360; return { top: `hsl(${h},55%,30%)`, right: `hsl(${h},58%,20%)`, left: `hsl(${h},55%,13%)`, glow: `hsl(${h},100%,72%)` }; }
     const h = 160 - Math.min(i, 40) * 2.2, l = i % 2 ? 0 : 3;
     return { top: `hsl(${h},38%,${17 + l}%)`, right: `hsl(${h},42%,${11 + l}%)`, left: `hsl(${h},40%,${7 + l}%)`, glow: `hsl(${h},100%,68%)` };
   }
   function reset() {
     stack = [{ x: 0, z: 0, w: SIZE + 24, d: SIZE + 24, y: -LH * 1.6, h: LH * 1.6, base: true, col: { top: "#14241f", right: "#0c1814", left: "#08110e", glow: "#5dffc3" } }];
     stack.push({ x: 0, z: 0, w: SIZE, d: SIZE, y: 0, h: LH, col: tint(0), born: -9 });
-    falling = []; beams = []; rings = []; pops = []; sparks = []; combo = 0; cam = 0; camT = 0; zoom = 1; milestone = null;
+    falling = []; beams = []; rings = []; pops = []; sparks = []; combo = 0; perfN = 0; maxCombo = 0; cam = 0; camT = 0; zoom = 1; milestone = null;
     Object.assign(zero, { y: 0, vy: 0, squash: 0, mood: "idle", lean: 0, fall: null });
     spawn();
   }
@@ -177,7 +183,7 @@
     const nb = { x: m.x, z: m.z, w: m.w, d: m.d, y: m.y, h: m.h, col: m.col, born: now };
     if (Math.abs(delta) < 4.5) {
       // 딱 맞음: 구멍이 한 줄로 이어진다
-      nb[ax] = t[ax]; combo++;
+      nb[ax] = t[ax]; combo++; perfN++; maxCombo = Math.max(maxCombo, combo);
       if (combo >= 4) nb[size] = Math.min(SIZE, nb[size] + 6);   // 연속으로 맞추면 칩이 조금 되살아난다
       sfx.perfect(combo - 1); vib(12);
       beams.push({ at: now, from: Math.max(1, stack.length - combo), x: nb.x, z: nb.z, w: nb.w, d: nb.d });
@@ -219,6 +225,7 @@
     zero.fall = { at: now, vx: rand(-60, 60), vy: 120 }; zero.mood = "scared";
     const L = layers();
     if (L > best) { best = L; newBest = true; store.set("hbm.best", String(best)); }
+    if (window.FAB) setTimeout(() => FAB.report("chip", { layers: L, perfect: perfN, maxCombo }), 900);
   }
   function pop(text, color) { pops.push({ text, color, at: now }); }
 

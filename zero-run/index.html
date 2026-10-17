@@ -104,6 +104,7 @@
   <div id="rotate">가로로 돌리면 더 크게 보입니다.</div>
 </div>
 
+<script src="../common/fab.js"></script>
 <script>
 (() => {
   "use strict";
@@ -527,6 +528,7 @@
       $best.textContent = "최고 " + fmtBytes(best);
     }
     p.dead = why;
+    if (window.FAB) setTimeout(() => FAB.report("zero", { bytes: b }), 700);
     setTimeout(() => { if (state === "over") $over.classList.remove("hidden"); }, 600);
   }
 
@@ -893,6 +895,7 @@
     chip: "#0a1a14", chipEdge: "#173d2e",
     one: "#cfe9dd", oneShade: "#8fb5a4", oneDark: "#3c5c4f",
     zero: "#5dffc3", zeroGlow: "rgba(93,255,195,0.25)",
+    ...(({ zr_gold: { zero: "#ffcf3a", zeroGlow: "rgba(255,207,58,0.28)" }, zr_pink: { zero: "#ff6fb5", zeroGlow: "rgba(255,111,181,0.28)" }, zr_sky: { zero: "#3bd1ff", zeroGlow: "rgba(59,209,255,0.28)" } })[window.FAB ? FAB.equipped("zero", "glow") : ""] || {}),   // 상점 꾸미기: 0의 빛
   };
 
   // 칩·배선은 움직이지 않는 그림이라 한 번만 그려 두고(K배 해상도) 매 프레임 복사만 한다.

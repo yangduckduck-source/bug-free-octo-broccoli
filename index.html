@@ -48,14 +48,56 @@
   .go { display: none; }
   footer { color: var(--sub); font-size: 12px; text-align: center; }
   footer a { color: var(--sub); }
+  /* 공장 장부 줄: 웨이퍼 · 오늘의 공정 · 상점 · 업적 */
+  .fabbar { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .head .wafer { margin-left: auto; align-self: center; }
+  .head .lead { flex-basis: 100%; }
+  .wafer { display: inline-flex; align-items: center; gap: 7px; font-family: var(--display); font-size: 20px; padding: 6px 14px 6px 8px; border-radius: 999px; background: #0d241c; color: #e6fff4; }
+  .coin { width: 22px; height: 22px; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, #fff, #b7c4dd 35%, #8fa0c4 60%, #c8b8ee 80%, #9fd6d0); box-shadow: 0 0 0 1.5px rgba(255,255,255,.6) inset; }
+  .fb { min-height: 40px; padding: 0 8px; justify-content: center; white-space: nowrap; border-radius: 999px; border: 0; background: var(--panel); color: var(--ink); font: 700 15px var(--body); cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,.08); display: inline-flex; align-items: center; gap: 6px; }
+  .fb .dot { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #0d241c; color: #5dffc3; font-size: 12px; display: inline-grid; place-items: center; font-variant-numeric: tabular-nums; }
+  .fb.done .dot { background: #1f8f73; color: #fff; }
+  .fb:focus-visible, .sheet button:focus-visible { outline: 3px solid #0071e3; outline-offset: 3px; }
+  .shade { position: fixed; inset: 0; z-index: 50; background: rgba(10, 14, 12, .45); display: flex; align-items: flex-end; justify-content: center; padding: 0 0 env(safe-area-inset-bottom, 0px); }
+  .shade[hidden] { display: none; }
+  .sheet { width: min(560px, 100%); max-height: 86%; overflow: auto; background: #f7f8f7; border-radius: 22px 22px 0 0; padding: 18px max(16px, env(safe-area-inset-left, 0px)) 22px; display: flex; flex-direction: column; gap: 12px; }
+  .sheet h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .sheet .x { border: 0; background: #e6e8e6; border-radius: 999px; width: 36px; height: 36px; font-size: 18px; cursor: pointer; }
+  .sheet .note { margin: 0; color: var(--sub); font-size: 14px; }
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .item { background: var(--panel); border-radius: 14px; padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; }
+  .item .t { font-weight: 800; font-size: 16px; min-width: 0; }
+  .item .s { color: var(--sub); font-size: 13px; }
+  .item .r { font-family: var(--display); font-size: 17px; color: #1f8f73; white-space: nowrap; }
+  .item.off { opacity: .55; }
+  .bar2 { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #e6e8e6; overflow: hidden; }
+  .bar2 i { display: block; height: 100%; background: #1f8f73; }
+  .swatch { width: 26px; height: 26px; border-radius: 8px; flex: none; }
+  .item .buy { min-height: 36px; padding: 0 14px; border-radius: 999px; border: 0; font: 800 14px var(--body); cursor: pointer; background: #0d241c; color: #5dffc3; white-space: nowrap; }
+  .item .buy.on { background: #1f8f73; color: #fff; }
+  .item .buy:disabled { opacity: .45; cursor: default; }
+  .stamp { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  .stamp span { aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: #e6e8e6; color: var(--sub); }
+  .stamp span.on { background: #0d241c; color: #5dffc3; }
+  .recs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .recs div { background: var(--panel); border-radius: 14px; padding: 10px 12px; }
+  .recs b { display: block; font-family: var(--display); font-weight: 400; font-size: 22px; }
+  .recs span { color: var(--sub); font-size: 13px; }
   @media (prefers-reduced-motion: reduce) { a.tile { transition: none; } }
 </style>
+<script src="common/fab.js"></script>
 </head>
 <body>
 <main>
   <div class="head">
     <h1>소유네 반도체 게임</h1>
+    <span class="wafer" title="웨이퍼: 게임을 하면 쌓이고, 상점에서 꾸미기를 산다"><i class="coin"></i><span id="wf">0</span></span>
     <p class="lead">골라서 바로 하는 작은 게임들</p>
+  </div>
+  <div class="fabbar">
+    <button class="fb" id="b-mis" type="button">오늘의 공정 <span class="dot" id="mis-n">0/3</span></button>
+    <button class="fb" id="b-shop" type="button">상점</button>
+    <button class="fb" id="b-ach" type="button">업적·기록</button>
   </div>
 
   <div class="grid">
@@ -172,7 +214,77 @@
 
   <footer>© 2026 yangduckduck-source · 플레이·공유 자유, 코드 재사용 금지 (<a href="https://github.com/yangduckduck-source/bug-free-octo-broccoli/blob/main/LICENSE">LICENSE</a>)</footer>
 </main>
+<div class="shade" id="sh" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t"></div></div>
 <script>
+  // ===== 공장 장부: 웨이퍼 · 오늘의 공정 · 상점 · 업적·기록 =====
+  (() => {
+    if (!window.FAB) return;
+    const $ = s => document.querySelector(s), sh = $("#sh"), sheet = $("#sheet");
+    const num = n => Number(n || 0).toLocaleString("ko-KR");
+    const esc = t => String(t).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+    function head() {
+      FAB.reload();
+      $("#wf").textContent = num(FAB.S.wafers);
+      const d = FAB.S.mis.filter(m => m.done).length;
+      $("#mis-n").textContent = `${d}/${FAB.S.mis.length}`; $("#b-mis").classList.toggle("done", d === FAB.S.mis.length);
+    }
+    let cur = null;
+    function open(kind) { cur = kind; render(); sh.hidden = false; const x = sheet.querySelector(".x"); if (x) x.focus(); }
+    function close() { sh.hidden = true; cur = null; head(); }
+    sh.addEventListener("click", e => { if (e.target === sh) close(); });
+    addEventListener("keydown", e => { if (e.key === "Escape" && !sh.hidden) close(); });
+    const top = t => `<h3 id="sh-t">${t}<button class="x" type="button" aria-label="닫기">✕</button></h3>`;
+    function render() {
+      const S = FAB.S;
+      if (cur === "mis") {
+        const att = S.att.streak || 0, k = ((att - 1) % 7 + 7) % 7;
+        sheet.innerHTML = top("오늘의 공정") +
+          `<p class="note">날마다 세 가지 공정이 바뀝니다. 끝내면 웨이퍼, 세 가지를 다 끝내면 보너스 ${FAB.ALL_DONE_BONUS}장.</p>` +
+          `<div class="list">` + S.mis.map(m => {
+            const d = FAB.missionDef(m.id), v = Math.min(m.v, d.t);
+            return `<div class="item${m.done ? "" : ""}"><div><div class="t">${m.done ? "✓ " : ""}${esc(d.label)}</div><div class="s">${esc(FAB.GAMES[d.g])} · ${num(v)} / ${num(d.t)}</div></div><div class="r">+${d.r}</div><div class="bar2"><i style="width:${(v / d.t) * 100}%"></i></div></div>`;
+          }).join("") + `</div>` +
+          `<h3 style="font-size:20px">출근 도장 · ${att}일 연속</h3>` +
+          `<div class="stamp">` + [20, 25, 30, 35, 40, 45, 100].map((r, i) => `<span class="${att > 0 && i <= k ? "on" : ""}">${i + 1}일<br>+${r}</span>`).join("") + `</div>` +
+          `<p class="note">하루에 한 번, 게임방에 들어오면 도장이 찍힙니다. 이어서 오면 보상이 커지고 7일째엔 100장.</p>`;
+      } else if (cur === "shop") {
+        const by = {};
+        FAB.SHOP.forEach(it => (by[it.g] = by[it.g] || []).push(it));
+        sheet.innerHTML = top("상점") + `<p class="note">웨이퍼로 겉모습을 바꿉니다. 승패에는 영향이 없습니다. 보유 웨이퍼 <b>${num(S.wafers)}장</b></p>` +
+          Object.keys(by).map(g => `<h3 style="font-size:19px">${esc(FAB.GAMES[g])}</h3><div class="list">` + by[g].map(it => {
+            const own = S.owned.includes(it.id), on = FAB.equipped(it.g, it.slot) === it.id;
+            const btn = own ? `<button class="buy${on ? " on" : ""}" type="button" data-eq="${it.id}">${on ? "착용 중" : "착용"}</button>`
+                            : `<button class="buy" type="button" data-buy="${it.id}" ${S.wafers < it.price ? "disabled" : ""}>${num(it.price)}장</button>`;
+            return `<div class="item"><div style="display:flex;gap:10px;align-items:center;min-width:0"><i class="swatch" style="background:${it.col}"></i><div class="t">${esc(it.name)}</div></div>${btn}</div>`;
+          }).join("") + `</div>`).join("");
+      } else if (cur === "ach") {
+        const B = S.best, got = FAB.ACH.filter(a => S.ach[a.id]).length;
+        const rec = [
+          ["칩 쌓기", (B.chip || {}).layers, "단"], ["버그 잡기", (B.bugs || {}).score, "점"], ["야구왕", (B.baseball || {}).runs, "점"],
+          ["ZERO RUN", (B.zero || {}).bytes, "B"], ["99 연승", (B.nn || {}).streak, "연승"], ["누적 웨이퍼", S.earned, "장"],
+        ];
+        sheet.innerHTML = top("업적·기록") + `<h3 style="font-size:19px">명예의 전당</h3><div class="recs">` +
+          rec.map(([n, v, u]) => `<div><span>${n}</span><b>${v ? num(v) + u : "—"}</b></div>`).join("") + `</div>` +
+          `<h3 style="font-size:19px">업적 ${got} / ${FAB.ACH.length}</h3><div class="list">` +
+          FAB.ACH.map(a => `<div class="item${S.ach[a.id] ? "" : " off"}"><div><div class="t">${S.ach[a.id] ? "★ " : ""}${esc(a.label)}</div><div class="s">${esc(a.desc)}</div></div><div class="r">+${a.r}</div></div>`).join("") + `</div>` +
+          `<p class="note">온라인 랭킹(친구와 점수 겨루기)은 앱으로 출시할 때 구글 플레이 게임즈·애플 게임센터에 연결합니다.</p>`;
+      }
+    }
+    sheet.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.classList.contains("x")) return close();
+      if (b.dataset.buy) { if (FAB.buy(b.dataset.buy)) FAB.toast({ earned: 0, lines: [] }, "새 꾸미기를 착용했어요"); render(); head(); }
+      if (b.dataset.eq) { FAB.equip(b.dataset.eq); render(); }
+    });
+    $("#b-mis").addEventListener("click", () => open("mis"));
+    $("#b-shop").addEventListener("click", () => open("shop"));
+    $("#b-ach").addEventListener("click", () => open("ach"));
+    head();
+    setTimeout(head, 50);                                   // 출근 도장이 찍힌 뒤 다시
+    addEventListener("pageshow", head);                     // 게임에서 돌아오면 새로
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) head(); });
+  })();
+
   // 게임 링크에 들어갈 때마다 버전 표시(?v=시각)를 붙인다.
   // 휴대폰이 예전에 받아 둔 게임 파일을 다시 쓰지 않고 늘 최신 판을 받아오게 하려는 것.
   document.querySelectorAll("a.tile").forEach(a => {

@@ -91,6 +91,7 @@
   <div class="btns"><button type="button" id="resume">계속하기</button><button type="button" id="restart" class="ghost">처음부터</button></div>
 </div>
 
+<script src="../common/fab.js"></script>
 <script>
 (() => {
   "use strict";
@@ -711,6 +712,7 @@
     const hit = G.hits > G.hits0, hr = hit && P && P.called === "hr";
     G.hits0 = G.hits; G.hrRun = hr ? G.hrRun + 1 : 0;
     let wait = 2200;
+    if (G.hrRun >= 2) G.b2b = true;
     if (G.hrRun >= 2) {
       const n = Math.min(G.hrRun, 4), name = ["백투백 홈런!", "백투백투백!", "백투백투백투백!"][n - 2];
       hype(["b2b", "b2b3", "b2b4"][n - 2], name, `${n}타자 연속 홈런`, "#ffcf3a", 3200); wait = 5600;
@@ -806,7 +808,7 @@
       if (st.double) { b[1] = b[0]; b[0] = 0; }        // 더블 스틸: 뒤 주자는 살아서 한 칸
       stealFx = { base: to, ok, at: now };
       if (ok) {
-        b[to] = runner; sfx.crowd(0.3, 1.6); say("세이프!", 0.1); feel("batter", "happy", 1200);
+        b[to] = runner; G.steals = (G.steals || 0) + 1; sfx.crowd(0.3, 1.6); say("세이프!", 0.1); feel("batter", "happy", 1200);
         banner("도루 성공!", `${to + 1}루 세이프`, "#7ee08a", 1400);
       } else {
         sfx.mitt(); sfx.groan();
@@ -924,6 +926,7 @@
     $("#best-over").textContent = nb ? "신기록!" : `최고 기록 ${best}점`;
     $("#over").classList.remove("hidden");
     overAt = now;
+    if (window.FAB) setTimeout(() => FAB.report("baseball", { runs: G.runs, hits: G.hits, hr: G.hr, b2b: !!G.b2b, steals: G.steals || 0 }), 900);
     say("게임 셋!");
   }
   let overAt = 0;
@@ -1560,16 +1563,18 @@
     c.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y); c.setLineDash([]);
   }
 
+  // 상점 꾸미기: 전자 공 색 [무리, 테두리, 궤도 고리]
+  const BALL = ({ bb_gold: ["255,207,58", "#ffe08a", "200,150,20"], bb_pink: ["255,111,181", "#ffb3d9", "200,60,140"], bb_sky: ["59,209,255", "#a9e8ff", "30,140,200"] })[window.FAB ? FAB.equipped("baseball", "ball") : ""] || ["93,255,195", "#8ff5d2", "47,191,154"];
   function drawBallAt(c, p, r) {
     c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.ellipse(p.sx, p.gy, r * 1.1, r * 0.35, 0, 0, 7); c.fill();
     // 전자 알갱이: 하얀 심에 민트 빛 무리
     const gl = c.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, r * 2.4);
-    gl.addColorStop(0, "rgba(93,255,195,.55)"); gl.addColorStop(1, "rgba(93,255,195,0)");
+    gl.addColorStop(0, `rgba(${BALL[0]},.55)`); gl.addColorStop(1, `rgba(${BALL[0]},0)`);
     c.fillStyle = gl; c.beginPath(); c.arc(p.sx, p.sy, r * 2.4, 0, 7); c.fill();
     const cg = c.createRadialGradient(p.sx - r * 0.3, p.sy - r * 0.3, r * 0.1, p.sx, p.sy, r);
-    cg.addColorStop(0, "#ffffff"); cg.addColorStop(0.6, "#e6fff6"); cg.addColorStop(1, "#8ff5d2");
+    cg.addColorStop(0, "#ffffff"); cg.addColorStop(0.6, "#e6fff6"); cg.addColorStop(1, BALL[1]);
     c.fillStyle = cg; c.beginPath(); c.arc(p.sx, p.sy, r, 0, 7); c.fill();
-    if (r > 4) { c.strokeStyle = "rgba(47,191,154,.7)"; c.lineWidth = Math.max(1, r * 0.1); c.beginPath(); c.ellipse(p.sx, p.sy, r * 1.5, r * 0.45, now / 120, 0, 7); c.stroke(); }
+    if (r > 4) { c.strokeStyle = `rgba(${BALL[2]},.75)`; c.lineWidth = Math.max(1, r * 0.1); c.beginPath(); c.ellipse(p.sx, p.sy, r * 1.5, r * 0.45, now / 120, 0, 7); c.stroke(); }
   }
   function ballScreen(w) { const p = proj(w.x, w.y, w.d), g = proj(w.x, 0, w.d); return { sx: p.x, sy: p.y, gy: g.y, k: p.k }; }
 

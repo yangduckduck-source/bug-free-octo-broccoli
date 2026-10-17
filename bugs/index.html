@@ -32,6 +32,7 @@
 <body>
 <canvas id="c" aria-label="버그 잡기 게임 화면. 칩 구멍에서 튀어나오는 무당벌레 버그를 눌러 잡는다. 0은 누르지 않는다."></canvas>
 <button id="snd" type="button">소리 켬</button>
+<script src="../common/fab.js"></script>
 <script>
 (() => {
   "use strict";
@@ -138,6 +139,7 @@
 
   // ================= 상태 =================
   const DAY = 30;
+  const FX = window.FAB ? FAB.equipped("bugs", "fx") : null;     // 상점 꾸미기: 잡을 때 효과
   let state = "title", now = 0, last = performance.now(), T0 = 0, nextAt = 0, overAt = 0, countAt = 0;
   let score = 0, caught = 0, zeros = 0, combo = 0, lastHitAt = -9, best = +(store.get("bugs.best") || 0), newBest = false;
   let splats = [], pops = [], parts = [], shake = 0, flash = 0, lastTick = -1, swarmAt = 0;
@@ -153,6 +155,7 @@
   function finish() {
     state = "over"; overAt = now; holes.forEach(h => { if (h.who && !h.who.hit) h.who.leaveAt = Math.min(h.who.leaveAt, now); });
     if (score > best) { best = score; newBest = true; store.set("bugs.best", String(best)); }
+    if (window.FAB) setTimeout(() => FAB.report("bugs", { score, caught }), 700);
     sfx.end();
   }
 
@@ -213,7 +216,7 @@
     splats.push({ x: best.x, y: best.y - 14, at: now, gold: w.kind === "gold", rot: rand(0, 6) });
     for (let i = 0; i < (w.kind === "gold" ? 22 : 12); i++) {
       const a = rand(0, Math.PI * 2), v = rand(80, 260);
-      parts.push({ x: best.x, y: best.y - 20, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, t: 0, life: rand(0.3, 0.6), col: w.kind === "gold" ? "#ffd84a" : Math.random() < 0.7 ? "#ff3b4b" : "#1a1a1a", r: rand(2, 4) });
+      parts.push({ x: best.x, y: best.y - 20, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, t: 0, life: rand(0.3, 0.6), col: FX === "bug_bolt" ? (Math.random() < 0.6 ? "#ffe14a" : "#ffffff") : FX === "bug_fire" ? `hsl(${Math.floor(rand(0, 360))},100%,62%)` : w.kind === "gold" ? "#ffd84a" : Math.random() < 0.7 ? "#ff3b4b" : "#1a1a1a", r: rand(2, 4) * (FX ? 1.3 : 1) });
     }
     pops.push({ x: best.x, y: best.y - 76, text: (w.kind === "gold" ? "황금 " : "") + "+" + pts, color: w.kind === "gold" ? "#ffd84a" : "#e6fff4", at: now, size: w.kind === "gold" ? 34 : 28 });
     if (combo === 5 || combo === 10) pops.push({ x: 240, y: 150, text: combo === 5 ? "연속 ×2" : "연속 ×3", color: "#5dffc3", at: now, size: 36 });
@@ -363,7 +366,7 @@
       ladybug(0, 0, 1, s.gold, 1, 0, true);
       ctx.restore();
       // "톡!" 충격 고리
-      if (e < 0.25) { ctx.strokeStyle = `rgba(255,255,255,${1 - e / 0.25})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(s.x, s.y - 30, 20 + e * 200, 0, 7); ctx.stroke(); }
+      if (e < 0.25) { ctx.strokeStyle = FX === "bug_bolt" ? `rgba(255,225,74,${1 - e / 0.25})` : FX === "bug_fire" ? `hsla(${(now * 600) % 360},100%,65%,${1 - e / 0.25})` : `rgba(255,255,255,${1 - e / 0.25})`; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(s.x, s.y - 30, 20 + e * 200, 0, 7); ctx.stroke(); }
     }
     for (const q of parts) { ctx.fillStyle = q.col; ctx.globalAlpha = 1 - q.t / q.life; ctx.beginPath(); ctx.arc(q.x, q.y, q.r, 0, 7); ctx.fill(); }
     ctx.globalAlpha = 1;

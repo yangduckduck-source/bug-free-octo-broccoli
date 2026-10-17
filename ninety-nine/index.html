@@ -217,6 +217,7 @@
   </div>
 </div>
 
+<script src="../common/fab.js"></script>
 <script>
 (() => {
   "use strict";
@@ -571,6 +572,7 @@
     if (g !== gen) return;
     const win = who !== "me", was = REC.s;
     const nb = record(win);
+    if (window.FAB) FAB.report("nn", { win, streak: win ? REC.s : 0 });
     if (win) { await party(REC.s, nb); if (g !== gen) return; }
     $("#overTitle").textContent = win ? (REC.s >= 2 ? `${REC.s}연승` : "승리") : "패배"; $("#overTitle").className = win ? "" : "lose";
     $("#overSub").textContent = (win ? "CPU 레지스터가 넘쳤다" : was >= 2 ? `${was}연승에서 멈췄다` : "내 레지스터가 넘쳤다") + ` · ${REC.w}승 ${REC.l}패`;
