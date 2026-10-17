@@ -543,6 +543,9 @@
   }
 
   function resolve(kind) {
+    // 병살: 주자가 있고 아웃이 하나 이하일 때 맞힌 공(홈런·파울 빼고)의 5%는 내야 땅볼 병살이 된다
+    const b0 = G.bases;
+    if ((kind === "out" || kind === "single" || kind === "double") && (b0[0] || b0[1] || b0[2]) && G.outs <= 1 && !P.steal && Math.random() < 0.05) { kind = "out"; P.dp = true; }
     P.result = kind; P.resAt = now;
     const late = P.delta > 0;
     if (kind === "ball" || kind === "strike" || kind === "whiff") {
@@ -563,7 +566,7 @@
       case "single": sfx.crack(0.95); impact("single"); sfx.crowd(0.1, 0.8);  launch(rand(26, 33), rand(6, 16), (late ? 1 : -1) * rand(4, 38)); break;
       case "out": {
         sfx.tip(); impact("out");
-        P.fly = Math.random() < 0.55;
+        P.fly = !P.dp && Math.random() < 0.55;
         launch(P.fly ? rand(24, 30) : rand(16, 22), P.fly ? rand(38, 55) : rand(-8, 2), (late ? 1 : -1) * rand(0, 35));
         break;
       }
@@ -602,9 +605,9 @@
       case "double": sfx.crowd(0.25, 1.6); feel("batter", "joy", 2000); feel("pitcher", "annoyed", 2000); advance(2); G.hits++; say("2루타!", 0.15); banner("2루타!", "", "#ffffff", 1500); endPA(); break;
       case "single": sfx.crowd(0.18, 1.3); feel("batter", "happy", 1800); feel("pitcher", "annoyed", 1800); advance(1); G.hits++; say("안타!", 0.15); banner("안타!", "", "#ffffff", 1300); endPA(); break;
       case "out": {
-        // 병살: 주자가 있고 아웃이 1개 이하일 때 땅볼이면 가끔 두 개를 한꺼번에 잡힌다
+        // 병살 (resolve에서 5%로 정해 둔 땅볼)
         const b = G.bases, any = b[0] || b[1] || b[2];
-        if (!P.fly && any && G.outs <= 1 && !P.steal && Math.random() < (b[0] ? 0.28 : 0.12)) {
+        if (P.dp && any && G.outs <= 1) {
           if (b[0]) b[0] = 0; else b[b[1] ? 1 : 2] = 0;      // 1루 주자(없으면 가장 앞이 아닌 주자)가 2루에서 잡힌다
           sfx.mitt(); later(sfx.mitt, 260);
           if (!retire(2, "병살타!", `${Math.min(3, G.outs + 2)} 아웃`, "병살!")) endPA();
