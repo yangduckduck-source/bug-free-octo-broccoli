@@ -642,7 +642,7 @@
     switch (kind) {
       case "hr": {
         sfx.crowd(0.42, 3); later(sfx.organ, 300);
-        const n = 1 + G.bases.reduce((a, b) => a + b, 0);
+        const n = 1 + G.bases.filter(Boolean).length;      // 베이스엔 주자의 타순이 적혀 있으니 개수로 센다
         G.runs += n; G.bases = [0, 0, 0]; G.hits++; G.hr++;
         say("홈런!", 0.25); feel("batter", "joy", 2800); feel("pitcher", "shock", 2800);
         hrFx = { at: now, fenceAt: ballScreen(P.hit), dist: P.hrDist || 125 };
@@ -718,7 +718,7 @@
       hype(["b2b", "b2b3", "b2b4"][n - 2], name, `${n}타자 연속 홈런`, "#ffcf3a", 3200); wait = 5600;
     }
     // 5점을 내줄 때마다 투수 교체
-    if (G.runs >= (G.pNext || 5)) { G.pNext = (G.pNext || 5) + 5; later(changePitcher, wait - 400); wait += 2600; }
+    if (G.runs >= (G.pNext || 5)) { G.pNext = (G.pNext || 5) + 5; while (G.runs >= G.pNext) G.pNext += 5; later(changePitcher, wait - 400); wait += 2600; }   // 한 타석에 여러 점이 나도 교체는 한 번
     G.balls = 0; G.strikes = 0; G.batters++; nextPitch(wait);
   }
   // 흥분한 중계: 녹음이 있으면 그 목소리로 (없으면 자막과 함성만 — 기계 목소리는 섞지 않는다)
