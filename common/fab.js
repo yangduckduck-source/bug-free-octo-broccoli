@@ -26,29 +26,30 @@
 
   // ---------- 웨이퍼 정산: 한 판 기록 → 웨이퍼 ----------
   const EARN = {
-    chip: s => (s.layers || 0) + Math.floor((s.perfect || 0) / 2),
-    bugs: s => Math.floor((s.score || 0) / 4),
-    baseball: s => (s.runs || 0) * 2 + (s.hits || 0) + (s.hr || 0) * 2,
-    zero: s => Math.floor((s.bytes || 0) / 16),
-    nn: s => (s.win ? 8 : 2),
+    // 게임마다 '보통 한 판'이 2~3장, 아주 잘한 판이 6~8장이 되도록 난이도에 맞춰 맞춘다 (한 판 최대 10장)
+    chip: s => Math.floor((s.layers || 0) / 4),                                        // 12단 3장 · 20단 5장
+    bugs: s => Math.floor((s.score || 0) / 20),                                        // 60점 3장 · 90점 4장
+    baseball: s => Math.floor((s.runs || 0) / 2) + Math.floor((s.hits || 0) / 4) + (s.hr || 0),   // 4점·안타 4·홈런 1 = 4장
+    zero: s => 1 + Math.floor((s.bytes || 0) / 25),                                    // 50B 3장 · 150B 7장 (어려운 만큼 후하게)
+    nn: s => (s.win ? 3 : 1),
   };
 
   // ---------- 오늘의 공정: 날마다 서로 다른 게임에서 세 가지 ----------
   // mode sum: 오늘 하루 동안 더한 값, max: 오늘 한 판에서 낸 가장 큰 값
   const MISSIONS = [
-    { id: "chip12", g: "chip", k: "layers", t: 12, mode: "max", label: "칩 12단 쌓기", r: 20 },
-    { id: "chipPerf", g: "chip", k: "perfect", t: 15, mode: "sum", label: "칩 쌓기에서 딱! 15번", r: 20 },
-    { id: "bug40", g: "bugs", k: "caught", t: 40, mode: "sum", label: "버그 40마리 잡기", r: 20 },
-    { id: "bug60", g: "bugs", k: "score", t: 60, mode: "max", label: "버그 잡기 한 판 60점", r: 25 },
-    { id: "hit5", g: "baseball", k: "hits", t: 5, mode: "sum", label: "야구왕 안타 5개", r: 20 },
-    { id: "hr1", g: "baseball", k: "hr", t: 1, mode: "sum", label: "야구왕 홈런 1개", r: 25 },
-    { id: "run6", g: "baseball", k: "runs", t: 6, mode: "max", label: "야구왕 한 판 6점", r: 30 },
-    { id: "zr150", g: "zero", k: "bytes", t: 150, mode: "max", label: "ZERO RUN 150B 달리기", r: 25 },
-    { id: "zr3", g: "zero", k: "plays", t: 3, mode: "sum", label: "ZERO RUN 3판", r: 15 },
-    { id: "nn1", g: "nn", k: "wins", t: 1, mode: "sum", label: "99에서 1번 이기기", r: 20 },
-    { id: "nn3", g: "nn", k: "plays", t: 3, mode: "sum", label: "99 3판", r: 15 },
+    { id: "chip12", g: "chip", k: "layers", t: 12, mode: "max", label: "칩 12단 쌓기", r: 30 },
+    { id: "chipPerf", g: "chip", k: "perfect", t: 15, mode: "sum", label: "칩 쌓기에서 딱! 15번", r: 30 },
+    { id: "bug40", g: "bugs", k: "caught", t: 40, mode: "sum", label: "버그 40마리 잡기", r: 30 },
+    { id: "bug60", g: "bugs", k: "score", t: 60, mode: "max", label: "버그 잡기 한 판 60점", r: 35 },
+    { id: "hit5", g: "baseball", k: "hits", t: 5, mode: "sum", label: "야구왕 안타 5개", r: 30 },
+    { id: "hr1", g: "baseball", k: "hr", t: 1, mode: "sum", label: "야구왕 홈런 1개", r: 35 },
+    { id: "run6", g: "baseball", k: "runs", t: 6, mode: "max", label: "야구왕 한 판 6점", r: 40 },
+    { id: "zr150", g: "zero", k: "bytes", t: 100, mode: "max", label: "ZERO RUN 100B 달리기", r: 40 },
+    { id: "zr3", g: "zero", k: "plays", t: 3, mode: "sum", label: "ZERO RUN 3판", r: 25 },
+    { id: "nn1", g: "nn", k: "wins", t: 1, mode: "sum", label: "99에서 1번 이기기", r: 30 },
+    { id: "nn3", g: "nn", k: "plays", t: 3, mode: "sum", label: "99 3판", r: 25 },
   ];
-  const ALL_DONE_BONUS = 30;
+  const ALL_DONE_BONUS = 60;
   function seeded(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
   function rollDay() {
     const d = today();
@@ -65,27 +66,27 @@
 
   // ---------- 업적 ----------
   const ACH = [
-    { id: "first", label: "첫 출근", desc: "아무 게임이나 한 판", r: 5, ok: () => true },
-    { id: "all5", label: "전 라인 순회", desc: "다섯 게임을 모두 한 판씩", r: 20, ok: () => Object.keys(GAMES).every(g => (S.tot[g] || {}).plays) },
-    { id: "chip8", label: "HBM3 양산", desc: "칩 8단 쌓기", r: 15, ok: (g, s) => g === "chip" && s.layers >= 8 },
-    { id: "chip12", label: "HBM3E 양산", desc: "칩 12단 쌓기", r: 30, ok: (g, s) => g === "chip" && s.layers >= 12 },
-    { id: "chip16", label: "HBM4 양산", desc: "칩 16단 쌓기", r: 60, ok: (g, s) => g === "chip" && s.layers >= 16 },
-    { id: "chip20", label: "세상에 없는 칩", desc: "칩 20단 쌓기", r: 125, ok: (g, s) => g === "chip" && s.layers >= 20 },
-    { id: "perf10", label: "TSV 정렬 장인", desc: "칩 쌓기 딱! 10연속", r: 50, ok: (g, s) => g === "chip" && s.maxCombo >= 10 },
-    { id: "bug50", label: "선임 엔지니어", desc: "버그 잡기 한 판 45점", r: 20, ok: (g, s) => g === "bugs" && s.score >= 45 },
-    { id: "bug90", label: "버그 헌터", desc: "버그 잡기 한 판 90점", r: 60, ok: (g, s) => g === "bugs" && s.score >= 90 },
-    { id: "bug500", label: "방역 반장", desc: "버그 500마리 누적", r: 40, ok: () => ((S.tot.bugs || {}).caught || 0) >= 500 },
-    { id: "hr", label: "첫 홈런", desc: "야구왕에서 홈런", r: 10, ok: (g, s) => g === "baseball" && s.hr >= 1 },
-    { id: "b2b", label: "백투백", desc: "두 타자 연속 홈런", r: 30, ok: (g, s) => g === "baseball" && s.b2b },
-    { id: "steal", label: "대도", desc: "도루 성공", r: 10, ok: (g, s) => g === "baseball" && s.steals >= 1 },
-    { id: "runs10", label: "빅이닝", desc: "야구왕 한 판 10점", r: 50, ok: (g, s) => g === "baseball" && s.runs >= 10 },
-    { id: "ace", label: "괴물 사냥", desc: "괴물 투수를 끌어내기 (20점)", r: 100, ok: (g, s) => g === "baseball" && s.runs >= 20 },
-    { id: "zr100", label: "100B 통과", desc: "ZERO RUN 100B", r: 15, ok: (g, s) => g === "zero" && s.bytes >= 100 },
-    { id: "zr250", label: "커널 패닉 생존", desc: "ZERO RUN 250B", r: 60, ok: (g, s) => g === "zero" && s.bytes >= 250 },
-    { id: "nn1", label: "레지스터 장악", desc: "99 첫 승", r: 10, ok: (g, s) => g === "nn" && s.win },
-    { id: "nn3", label: "오버클럭", desc: "99 3연승", r: 40, ok: (g, s) => g === "nn" && s.streak >= 3 },
-    { id: "att7", label: "개근상", desc: "7일 연속 출근", r: 50, ok: () => S.att.streak >= 7 },
-    { id: "w1000", label: "웨이퍼 부자", desc: "웨이퍼 누적 1,000장", r: 25, ok: () => S.earned >= 1000 },
+    { id: "first", label: "첫 출근", desc: "아무 게임이나 한 판", r: 10, ok: () => true },
+    { id: "all5", label: "전 라인 순회", desc: "다섯 게임을 모두 한 판씩", r: 40, ok: () => Object.keys(GAMES).every(g => (S.tot[g] || {}).plays) },
+    { id: "chip8", label: "HBM3 양산", desc: "칩 8단 쌓기", r: 30, ok: (g, s) => g === "chip" && s.layers >= 8 },
+    { id: "chip12", label: "HBM3E 양산", desc: "칩 12단 쌓기", r: 60, ok: (g, s) => g === "chip" && s.layers >= 12 },
+    { id: "chip16", label: "HBM4 양산", desc: "칩 16단 쌓기", r: 120, ok: (g, s) => g === "chip" && s.layers >= 16 },
+    { id: "chip20", label: "세상에 없는 칩", desc: "칩 20단 쌓기", r: 250, ok: (g, s) => g === "chip" && s.layers >= 20 },
+    { id: "perf10", label: "TSV 정렬 장인", desc: "칩 쌓기 딱! 10연속", r: 100, ok: (g, s) => g === "chip" && s.maxCombo >= 10 },
+    { id: "bug50", label: "선임 엔지니어", desc: "버그 잡기 한 판 45점", r: 40, ok: (g, s) => g === "bugs" && s.score >= 45 },
+    { id: "bug90", label: "버그 헌터", desc: "버그 잡기 한 판 90점", r: 120, ok: (g, s) => g === "bugs" && s.score >= 90 },
+    { id: "bug500", label: "방역 반장", desc: "버그 500마리 누적", r: 80, ok: () => ((S.tot.bugs || {}).caught || 0) >= 500 },
+    { id: "hr", label: "첫 홈런", desc: "야구왕에서 홈런", r: 20, ok: (g, s) => g === "baseball" && s.hr >= 1 },
+    { id: "b2b", label: "백투백", desc: "두 타자 연속 홈런", r: 60, ok: (g, s) => g === "baseball" && s.b2b },
+    { id: "steal", label: "대도", desc: "도루 성공", r: 20, ok: (g, s) => g === "baseball" && s.steals >= 1 },
+    { id: "runs10", label: "빅이닝", desc: "야구왕 한 판 10점", r: 100, ok: (g, s) => g === "baseball" && s.runs >= 10 },
+    { id: "ace", label: "괴물 사냥", desc: "괴물 투수를 끌어내기 (20점)", r: 200, ok: (g, s) => g === "baseball" && s.runs >= 20 },
+    { id: "zr100", label: "100B 통과", desc: "ZERO RUN 100B", r: 30, ok: (g, s) => g === "zero" && s.bytes >= 100 },
+    { id: "zr250", label: "커널 패닉 생존", desc: "ZERO RUN 250B", r: 120, ok: (g, s) => g === "zero" && s.bytes >= 250 },
+    { id: "nn1", label: "레지스터 장악", desc: "99 첫 승", r: 20, ok: (g, s) => g === "nn" && s.win },
+    { id: "nn3", label: "오버클럭", desc: "99 3연승", r: 80, ok: (g, s) => g === "nn" && s.streak >= 3 },
+    { id: "att7", label: "개근상", desc: "7일 연속 출근", r: 100, ok: () => S.att.streak >= 7 },
+    { id: "w1000", label: "웨이퍼 부자", desc: "웨이퍼 누적 1,000장", r: 50, ok: () => S.earned >= 1000 },
   ];
 
   // ---------- 직급: 누적 웨이퍼로 승진한다 ----------
@@ -113,7 +114,7 @@
   ];
 
   // ---------- 출근 도장 ----------
-  const ATT_REWARD = [10, 12, 15, 18, 20, 25, 60];
+  const ATT_REWARD = [20, 25, 30, 35, 40, 45, 100];
   let attToday = null;
   function checkIn() {
     const d = today();
@@ -137,7 +138,7 @@
       tot[k] = (tot[k] || 0) + v; best[k] = Math.max(best[k] || 0, v);
     }
     const out = { earned: 0, lines: [] };
-    const base = Math.max(1, Math.round(EARN[g] ? EARN[g](s) : 0));
+    const base = Math.min(10, Math.max(1, Math.round(EARN[g] ? EARN[g](s) : 0)));
     out.earned += base;
     // 오늘의 공정
     for (const m of S.mis) {
