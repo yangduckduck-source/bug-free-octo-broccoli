@@ -177,6 +177,45 @@
     .who.cpu { padding-right: calc(var(--cap-w) + 8px); }
   }
   @media (prefers-reduced-motion: reduce) { .card .inner, .card { transition: none; } }
+  /* ===== 반도체 판 =====
+     오락실의 다른 게임과 한 세계로: 어두운 칩 기판 위에 화투를 깐다. 화투 그림은 그대로.
+     담요 대신 배선이 지나가는 초록 기판, 테두리는 금빛 접점, 글자와 강조는 민트 빛. */
+  :root {
+    color-scheme: dark;
+    --page: #04110c; --panel: #0d241c; --panel-2: #081812; --ink: #e6fff4; --sub: #8fbfac;
+    --mint: #5dffc3; --amber: #ffb547; --red: #ff5a6a; --blue: #5dffc3; --gold: #ffb547; --line: #173d2e;
+  }
+  body {
+    background:
+      linear-gradient(rgba(93,255,195,.035) 1px, transparent 1px) 0 0 / 24px 24px,
+      linear-gradient(90deg, rgba(93,255,195,.035) 1px, transparent 1px) 0 0 / 24px 24px,
+      radial-gradient(120% 80% at 50% 30%, #0a2219, #030c09);
+  }
+  header h1 { color: var(--mint); text-shadow: 0 0 14px rgba(93,255,195,.55); }
+  .pill { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1.5px rgba(93,255,195,.35); }
+  .bar { background: var(--panel); box-shadow: inset 0 0 0 1.5px var(--line); }
+  .grp { background: var(--panel-2); }
+  .grp h3 { color: var(--sub); }
+  .badge.go { background: var(--red); color: #fff; }
+  .badge.shake { background: var(--amber); color: #1a1406; }
+  .table {
+    background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%22160%22%20height%3D%22160%22%20viewBox%3D%220%200%20160%20160%22%3E%3Cg%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M0%2034%20H46%20L62%2050%20H108%20L124%2034%20H160%22%20stroke%3D%22%230f3527%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M28%20160%20V122%20L44%20106%20V78%22%20stroke%3D%22%230f3527%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M118%200%20V20%20L134%2036%20V64%20L150%2080%20H160%22%20stroke%3D%22%230f3527%22%20stroke-width%3D%223%22/%3E%3Cpath%20d%3D%22M86%20160%20V136%20L100%20122%20H140%22%20stroke%3D%22%23123d2e%22%20stroke-width%3D%222%22/%3E%3Cpath%20d%3D%22M0%2096%20H18%20L30%2084%22%20stroke%3D%22%23123d2e%22%20stroke-width%3D%222%22/%3E%3C/g%3E%3Cg%20fill%3D%22%230a2219%22%20stroke%3D%22%23b8923f%22%20stroke-width%3D%222%22%3E%3Ccircle%20cx%3D%2244%22%20cy%3D%2278%22%20r%3D%224%22/%3E%3Ccircle%20cx%3D%2230%22%20cy%3D%2284%22%20r%3D%223.5%22/%3E%3Ccircle%20cx%3D%22140%22%20cy%3D%22122%22%20r%3D%224%22/%3E%3Ccircle%20cx%3D%22134%22%20cy%3D%2264%22%20r%3D%223.5%22/%3E%3C/g%3E%3C/svg%3E") 0 0 / 160px 160px, radial-gradient(120% 90% at 50% 40%, #0d2a20, #061510);
+    box-shadow: inset 0 0 0 2px var(--line), inset 0 0 0 6px #061510, inset 0 0 0 7.5px rgba(184,146,63,.7), inset 0 0 40px rgba(0,0,0,.6);
+  }
+  .deck { color: var(--ink); }
+  .fgrp .tag { background: var(--amber); color: #1a1406; }
+  .status { background: rgba(3,12,9,.8); color: var(--mint); box-shadow: inset 0 0 0 1px rgba(93,255,195,.35); }
+  .hand .card.match .front { box-shadow: 0 0 0 3px var(--mint), 0 0 16px rgba(93,255,195,.55); }
+  .dust { background: rgba(93,255,195,.9); box-shadow: 0 0 6px rgba(93,255,195,.8); }
+  .toast { background: var(--panel); color: var(--mint); box-shadow: 0 0 0 2px rgba(93,255,195,.45), 0 0 40px rgba(93,255,195,.25), 0 20px 50px rgba(0,0,0,.5); text-shadow: 0 0 16px rgba(93,255,195,.5); }
+  .toast small { color: var(--ink); text-shadow: none; }
+  .modal { background: rgba(0,8,5,.6); }
+  .sheet { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1.5px var(--line), 0 30px 70px rgba(0,0,0,.6); }
+  .big { background: #133126; color: var(--ink); }
+  .big.red { background: var(--mint); color: #04110c; }
+  .big.dark { background: #1d5a43; color: var(--ink); }
+  .tbl td { border-bottom-color: rgba(93,255,195,.12); }
+  .rules b { color: var(--mint); }
 </style>
 </head>
 <body>
