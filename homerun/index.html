@@ -375,7 +375,12 @@
   let best = Number(store.get("homerun.best")) || 0;
   let G, P, fx, msg, now = performance.now();
   let paused = false, pauseAcc = 0, pauseStart = 0;
-  const gameNow = () => (paused ? pauseStart : performance.now()) - pauseAcc;
+  // 경기 시계 = 실제 시간 × 배속. 배속이 바뀔 때마다 기준점을 옮겨 시계가 끊기지 않게 한다 (슬로 모션)
+  let tsS = 1, tsR = 0, tsG = 0;
+  const rawNow = () => (paused ? pauseStart : performance.now()) - pauseAcc;
+  const toGame = r => tsG + (r - tsR) * tsS;
+  const gameNow = () => toGame(rawNow());
+  function setTimeScale(sc) { const r = rawNow(); tsG = toGame(r); tsR = r; tsS = sc; }
   // 경기 시계 기준 예약 (타임 중엔 흐르지 않는다)
   let timers = [];
   const later = (fn, ms) => timers.push({ at: now + ms, fn });
@@ -433,6 +438,7 @@
       tSet: t0, tLift: t0 + setT, tHold: t0 + setT + lift, tStride: t0 + setT + lift + hold, tRel: t0 + setT + lift + hold + stride,
       swung: false, swingT: 0, result: null, done: false, hit: null, brk: tx < 0 ? -1 : 1,
       no: G.batters,          // 지금 타석에 선 타자의 등번호 (판정이 나도 다음 공이 올 때까지 그대로)
+      clutch: G.outs === 2 && G.strikes === 2,   // 2아웃 2스트라이크: 이 공은 슬로 모션
     };
     P.tArr = P.tRel + flight;
   }
@@ -454,7 +460,7 @@
     if (paused) return;
     if (P.bunt) return;                       // 번트 자세: 공이 오면 저절로 댄다
     const raw = ev && ev.timeStamp && Math.abs(ev.timeStamp - performance.now()) < 1000 ? ev.timeStamp : performance.now();
-    const t = raw - pauseAcc;                 // 경기 시계로 바꾼다
+    const t = toGame(raw - pauseAcc);         // 경기 시계로 바꾼다 (슬로 모션이면 늘어난 시간으로)
     if (t < P.tRel - 120) return;            // 공을 놓기도 전에 누르면 무시
     P.swung = true; P.swingT = t; feel("batter", "effort", 500);
     sfx.swing();
@@ -533,7 +539,7 @@
   }
 
   function resolve(kind) {
-    P.result = kind;
+    P.result = kind; P.resAt = now;
     const late = P.delta > 0;
     if (kind === "ball" || kind === "strike" || kind === "whiff") {
       // 볼넷이면 주자는 밀려 가므로 도루는 없던 일, 아니면 포수가 받는 순간 던진다
@@ -1723,9 +1729,45 @@
     drawImpact(ctx);
     drawHrFx(ctx);
     if (shaking) ctx.restore();
+    drawSlow(ctx);
     if (jolt) { const e = performance.now() - jolt.at; if (e < 140) { ctx.fillStyle = `rgba(255,252,235,${jolt.flash * (1 - e / 140)})`; ctx.fillRect(0, 0, W, H); } }
     if (state !== "title" && G) drawBoard(ctx);
     drawMsg(ctx);
+  }
+
+  // ================= 슬로 모션 (2아웃 2스트라이크) =================
+  // 투수가 내딛는 순간부터 판정이 날 때까지 시간이 0.45배로 늘어진다. 화면 위아래에 검은 띠, 가장자리가 어두워지고 심장 소리
+  const SLOW = 0.45;
+  let beatAt = 0;
+  function slowWanted() {
+    if (state !== "play" || !P || !P.clutch || paused) return false;
+    if (now < P.tStride - 150) return false;
+    if (P.resAt != null && now > P.resAt + (P.hit ? 650 : 300)) return false;
+    return true;
+  }
+  function slowMo(t) {
+    const want = slowWanted() ? SLOW : 1;
+    if (tsS !== want) {
+      let sc = tsS + (want - tsS) * (want < tsS ? 0.22 : 0.07);
+      if (Math.abs(sc - want) < 0.01) sc = want;
+      setTimeScale(sc); now = gameNow();
+    }
+    if (slowK() > 0.6 && t - beatAt > 820) { beatAt = t; tone(62, 0.16, "sine", 0.3, 0, 48); tone(56, 0.18, "sine", 0.22, 0.19, 44); }
+  }
+  const slowK = () => Math.max(0, Math.min(1, (1 - tsS) / (1 - SLOW)));
+  function drawSlow(c) {
+    const k = slowK(); if (k < 0.01) return;
+    // 가장자리 어둡게
+    const g = c.createRadialGradient(W / 2, H * 0.55, H * 0.22, W / 2, H * 0.55, H * 0.75);
+    g.addColorStop(0, "rgba(0,0,12,0)"); g.addColorStop(1, `rgba(0,0,12,${0.6 * k})`);
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    // 영화처럼 위아래 검은 띠
+    c.fillStyle = "#000"; c.fillRect(0, 112, W, 34 * k); c.fillRect(0, H - 40 * k, W, 40 * k);
+    // 중계 화면의 슬로 표시
+    c.save(); c.globalAlpha = k; c.font = "bold 13px sans-serif"; c.textAlign = "left";
+    c.fillStyle = "#ff4b3e"; c.beginPath(); c.arc(20, 112 + 17 * k, 4.5, 0, 7); c.fill();
+    c.fillStyle = "#fff"; c.fillText("SLOW", 30, 112 + 17 * k + 4.5);
+    c.restore();
   }
 
   // ================= 루프 =================
@@ -1735,10 +1777,11 @@
     updateActs();
     if (paused) { last = t; draw(); requestAnimationFrame(frame); return; }
     if (stopAt) {
-      if (performance.now() - stopAt < stopLen) { now = stopAt - pauseAcc; last = t; draw(); requestAnimationFrame(frame); return; }
+      if (performance.now() - stopAt < stopLen) { now = toGame(stopAt - pauseAcc); last = t; draw(); requestAnimationFrame(frame); return; }
       pauseAcc += stopLen; stopAt = 0; now = gameNow();
     }
-    acc += Math.min(0.1, (t - last) / 1000); last = t;
+    slowMo(t);
+    acc += Math.min(0.1, (t - last) / 1000) * tsS; last = t;
     while (acc >= 1 / 60) { update(); acc -= 1 / 60; }
     draw();
     requestAnimationFrame(frame);
@@ -1752,7 +1795,7 @@
   requestAnimationFrame(frame);
 
   // 테스트용 읽기 훅
-  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), setBases: b => { G.bases = b.slice(); }, setOuts: n => { G.outs = n; }, get queuedAt() { return queuedAt; }, get msg() { return msg; }, pickPitch: L => pickPitch(L) };
+  window.__hr = { get state() { return state; }, get G() { return G; }, get P() { return P; }, now: () => gameNow(), get paused() { return paused; }, get clips() { return Object.keys(clips).length; }, get clipPlays() { return clipPlays; }, feel: (w, m, ms) => feel(w, m, ms), setBases: b => { G.bases = b.slice(); }, setOuts: n => { G.outs = n; }, get queuedAt() { return queuedAt; }, get msg() { return msg; }, get timeScale() { return tsS; }, pickPitch: L => pickPitch(L) };
 })();
 </script>
 </body>
