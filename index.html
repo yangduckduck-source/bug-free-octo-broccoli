@@ -51,6 +51,14 @@
   /* 공장 장부 줄: 웨이퍼 · 오늘의 공정 · 상점 · 업적 */
   .fabbar { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .head .wafer { margin-left: auto; align-self: center; }
+  .wafer .rk { font: 800 13px var(--body); color: #5dffc3; padding: 2px 8px; border-radius: 999px; background: rgba(93,255,195,.14); }
+  .item.shop { grid-template-columns: minmax(0, 1fr); }
+  .item.shop .btns { justify-content: flex-start; }
+  .item .btns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .item .lock { font-size: 12px; color: var(--sub); white-space: nowrap; }
+  .ladder { display: flex; gap: 4px; }
+  .ladder span { flex: 1; text-align: center; font-size: 12px; font-weight: 800; padding: 6px 0; border-radius: 8px; background: #e6e8e6; color: var(--sub); }
+  .ladder span.on { background: #0d241c; color: #5dffc3; }
   .head .lead { flex-basis: 100%; }
   .wafer { display: inline-flex; align-items: center; gap: 7px; font-family: var(--display); font-size: 20px; padding: 6px 14px 6px 8px; border-radius: 999px; background: #0d241c; color: #e6fff4; }
   .coin { width: 22px; height: 22px; border-radius: 50%; flex: none; background: radial-gradient(circle at 35% 30%, #fff, #b7c4dd 35%, #8fa0c4 60%, #c8b8ee 80%, #9fd6d0); box-shadow: 0 0 0 1.5px rgba(255,255,255,.6) inset; }
@@ -91,7 +99,7 @@
 <main>
   <div class="head">
     <h1>소유네 반도체 게임</h1>
-    <span class="wafer" title="웨이퍼: 게임을 하면 쌓이고, 상점에서 꾸미기를 산다"><i class="coin"></i><span id="wf">0</span></span>
+    <span class="wafer" title="직급과 웨이퍼: 게임을 하면 웨이퍼가 쌓이고, 누적 웨이퍼로 승진한다"><span class="rk" id="rk">인턴</span><i class="coin"></i><span id="wf">0</span></span>
     <p class="lead">골라서 바로 하는 작은 게임들</p>
   </div>
   <div class="fabbar">
@@ -225,6 +233,7 @@
     function head() {
       FAB.reload();
       $("#wf").textContent = num(FAB.S.wafers);
+      $("#rk").textContent = FAB.RANKS[FAB.rank()].name;
       const d = FAB.S.mis.filter(m => m.done).length;
       $("#mis-n").textContent = `${d}/${FAB.S.mis.length}`; $("#b-mis").classList.toggle("done", d === FAB.S.mis.length);
     }
@@ -248,14 +257,18 @@
           `<div class="stamp">` + [20, 25, 30, 35, 40, 45, 100].map((r, i) => `<span class="${att > 0 && i <= k ? "on" : ""}">${i + 1}일<br>+${r}</span>`).join("") + `</div>` +
           `<p class="note">하루에 한 번, 게임방에 들어오면 도장이 찍힙니다. 이어서 오면 보상이 커지고 7일째엔 100장.</p>`;
       } else if (cur === "shop") {
-        const by = {};
+        const by = {}, R = FAB.rank(), RN = FAB.RANKS, nx = RN[R + 1];
         FAB.SHOP.forEach(it => (by[it.g] = by[it.g] || []).push(it));
-        sheet.innerHTML = top("상점") + `<p class="note">웨이퍼로 겉모습을 바꿉니다. 승패에는 영향이 없습니다. 보유 웨이퍼 <b>${num(S.wafers)}장</b></p>` +
+        sheet.innerHTML = top("상점") +
+          `<p class="note">겉모습만 바꿉니다(승패 영향 없음). <b>코팅</b>은 정해진 판 수만큼 쓰면 닳고, <b>소장판</b>은 비싸지만 영구입니다. 좋은 꾸미기는 직급이 올라야 열립니다.</p>` +
+          `<p class="note">보유 웨이퍼 <b>${num(S.wafers)}장</b> · 직급 <b>${RN[R].name}</b>${nx ? ` · ${nx.name}까지 누적 ${num(nx.at - S.earned)}장` : ""}</p>` +
           Object.keys(by).map(g => `<h3 style="font-size:19px">${esc(FAB.GAMES[g])}</h3><div class="list">` + by[g].map(it => {
-            const own = S.owned.includes(it.id), on = FAB.equipped(it.g, it.slot) === it.id;
-            const btn = own ? `<button class="buy${on ? " on" : ""}" type="button" data-eq="${it.id}">${on ? "착용 중" : "착용"}</button>`
-                            : `<button class="buy" type="button" data-buy="${it.id}" ${S.wafers < it.price ? "disabled" : ""}>${num(it.price)}장</button>`;
-            return `<div class="item"><div style="display:flex;gap:10px;align-items:center;min-width:0"><i class="swatch" style="background:${it.col}"></i><div class="t">${esc(it.name)}</div></div>${btn}</div>`;
+            const perm = S.owned.includes(it.id), left = S.uses[it.id] || 0, on = FAB.equipped(it.g, it.slot) === it.id;
+            const st = perm ? "소장 중" : left ? `코팅 ${left}판 남음` : "";
+            const eq = (perm || left) ? `<button class="buy${on ? " on" : ""}" type="button" data-eq="${it.id}">${on ? "착용 중" : "착용"}</button>` : "";
+            const cb = perm ? "" : R < it.c[2] ? `<span class="lock">코팅은 ${RN[it.c[2]].name}부터</span>` : `<button class="buy" type="button" data-buy="${it.id}" data-k="c" ${S.wafers < it.c[0] ? "disabled" : ""}>${it.c[1]}판 ${num(it.c[0])}장</button>`;
+            const pb = perm ? "" : R < it.p[1] ? `<span class="lock">소장은 ${RN[it.p[1]].name}부터</span>` : `<button class="buy" type="button" data-buy="${it.id}" data-k="p" ${S.wafers < it.p[0] ? "disabled" : ""}>소장 ${num(it.p[0])}장</button>`;
+            return `<div class="item shop"><div style="display:flex;gap:10px;align-items:center;min-width:0"><i class="swatch" style="background:${it.col}"></i><div class="t">${esc(it.name)}</div>${st ? `<div class="s" style="margin-left:auto;white-space:nowrap">${st}</div>` : ""}</div><div class="btns">${eq}${cb}${pb}</div></div>`;
           }).join("") + `</div>`).join("");
       } else if (cur === "ach") {
         const B = S.best, got = FAB.ACH.filter(a => S.ach[a.id]).length;
@@ -263,7 +276,11 @@
           ["칩 쌓기", (B.chip || {}).layers, "단"], ["버그 잡기", (B.bugs || {}).score, "점"], ["야구왕", (B.baseball || {}).runs, "점"],
           ["ZERO RUN", (B.zero || {}).bytes, "B"], ["99 연승", (B.nn || {}).streak, "연승"], ["누적 웨이퍼", S.earned, "장"],
         ];
-        sheet.innerHTML = top("업적·기록") + `<h3 style="font-size:19px">명예의 전당</h3><div class="recs">` +
+        const R = FAB.rank(), nx = FAB.RANKS[R + 1];
+        sheet.innerHTML = top("업적·기록") + `<h3 style="font-size:19px">직급 · ${FAB.RANKS[R].name}</h3><div class="ladder">` +
+          FAB.RANKS.map((r, i) => `<span class="${i <= R ? "on" : ""}">${r.name}</span>`).join("") + `</div>` +
+          `<p class="note">${nx ? `누적 웨이퍼 ${num(S.earned)}장 · ${nx.name}까지 ${num(nx.at - S.earned)}장` : "최고 직급에 올랐습니다."}</p>` +
+          `<h3 style="font-size:19px">명예의 전당</h3><div class="recs">` +
           rec.map(([n, v, u]) => `<div><span>${n}</span><b>${v ? num(v) + u : "—"}</b></div>`).join("") + `</div>` +
           `<h3 style="font-size:19px">업적 ${got} / ${FAB.ACH.length}</h3><div class="list">` +
           FAB.ACH.map(a => `<div class="item${S.ach[a.id] ? "" : " off"}"><div><div class="t">${S.ach[a.id] ? "★ " : ""}${esc(a.label)}</div><div class="s">${esc(a.desc)}</div></div><div class="r">+${a.r}</div></div>`).join("") + `</div>` +
@@ -273,7 +290,7 @@
     sheet.addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       if (b.classList.contains("x")) return close();
-      if (b.dataset.buy) { if (FAB.buy(b.dataset.buy)) FAB.toast({ earned: 0, lines: [] }, "새 꾸미기를 착용했어요"); render(); head(); }
+      if (b.dataset.buy) { if (FAB.buy(b.dataset.buy, b.dataset.k)) FAB.toast({ earned: 0, lines: [] }, "새 꾸미기를 착용했어요"); render(); head(); }
       if (b.dataset.eq) { FAB.equip(b.dataset.eq); render(); }
     });
     $("#b-mis").addEventListener("click", () => open("mis"));
