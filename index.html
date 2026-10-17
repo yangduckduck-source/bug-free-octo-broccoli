@@ -38,6 +38,7 @@
   }
   a.tile:hover { transform: translateY(-3px); box-shadow: 0 14px 34px rgba(0,0,0,.12); }
   a.tile:focus-visible { outline: 3px solid #0071e3; outline-offset: 4px; }
+  a.tile.wide { grid-column: 1 / -1; }
   .art { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
   .art svg { width: 100%; height: 100%; }
   .art.zero { background: #04110c; }
@@ -59,6 +60,27 @@
   </div>
 
   <div class="grid">
+    <a class="tile wide" href="noodle/">
+      <div class="art" style="background:#141634">
+        <svg viewBox="0 0 640 180" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+          <rect width="640" height="180" fill="#141634"/>
+          <path d="M0 0 H640 V34 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 q-20 18 -40 0 Z" fill="#d5492d"/>
+          <line x1="320" y1="0" x2="320" y2="40" stroke="#111" stroke-width="2"/><circle cx="320" cy="48" r="9" fill="#ffd98c"/>
+          <circle cx="320" cy="48" r="60" fill="#ffc46b" opacity=".12"/>
+          <rect y="118" width="640" height="62" fill="#b98a55"/>
+          <path d="M210 128 Q320 186 430 128" stroke="#f4e7cc" stroke-width="16" fill="none" stroke-linecap="round"/>
+          <path d="M210 124 Q320 180 430 124 M210 132 Q320 190 430 132" stroke="#c9a676" stroke-width="1.2" fill="none"/>
+          <ellipse cx="204" cy="126" rx="20" ry="17" fill="#e2ab82"/><ellipse cx="436" cy="126" rx="20" ry="17" fill="#e2ab82"/>
+          <text x="520" y="100" font-family="Black Han Sans, sans-serif" font-size="22" fill="#3fe0d0" opacity=".7">호프</text>
+        </svg>
+      </div>
+      <div class="info">
+        <h2>양국수 뽑기</h2>
+        <p>원버튼 손맛 수타면</p>
+        <span class="go">하러 가기 →</span>
+      </div>
+    </a>
+
     <a class="tile" href="ninety-nine/">
       <div class="art" style="background:#0a2219">
         <svg viewBox="0 0 320 180" width="100%" height="100%" aria-hidden="true">
