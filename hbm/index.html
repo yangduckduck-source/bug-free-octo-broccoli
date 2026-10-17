@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>HBM 쌓기</title>
+<title>칩 쌓기</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Orbitron:wght@700;900&display=swap">
@@ -32,7 +32,7 @@
 </style>
 </head>
 <body>
-<canvas id="c" aria-label="HBM 쌓기 게임 화면. 칩이 지나갈 때 눌러서 아래 칩 위에 쌓는다."></canvas>
+<canvas id="c" aria-label="칩 쌓기 게임 화면. 칩이 지나갈 때 눌러서 아래 칩 위에 쌓는다."></canvas>
 <button id="snd" type="button">소리 켬</button>
 <script>
 (() => {
@@ -423,7 +423,7 @@
     ctx.save(); ctx.textAlign = "center";
     ctx.font = `700 15px ${FONT.num}`; ctx.fillStyle = "#6fa58f"; ctx.fillText("HIGH BANDWIDTH MEMORY", 240, 120);
     ctx.font = `72px ${FONT.kr}`; ctx.fillStyle = "#e6fff4"; ctx.shadowColor = "rgba(93,255,195,.7)"; ctx.shadowBlur = 22;
-    ctx.fillText("HBM 쌓기", 240, 190); ctx.shadowBlur = 0;
+    ctx.fillText("칩 쌓기", 240, 190); ctx.shadowBlur = 0;
     ctx.font = `18px ${FONT.kr}`; ctx.fillStyle = "#cfe9dd";
     ctx.fillText("칩이 지나갈 때 눌러서 쌓는다", 240, 236);
     ctx.fillText("딱 맞추면 TSV 구멍이 이어져 빛난다", 240, 262);
