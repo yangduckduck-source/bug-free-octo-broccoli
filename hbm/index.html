@@ -1,0 +1,482 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>HBM 쌓기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Orbitron:wght@700;900&display=swap">
+<style>
+  /* 한 화면: ZERO RUN과 같은 어두운 기판 세계. 가운데 비스듬히 내려다본 칩 탑, 위에 단수와 용량.
+     캔버스 하나에 다 그리고, 소리 버튼만 문서 위에 띄운다. 어두운 장면 하나로만 그린다. */
+  :root {
+    color-scheme: dark;
+    --bg: #040b09;
+    --ink: #e6fff4;
+    --dim: #6fa58f;
+    --mint: #5dffc3;
+    --amber: #ffb547;
+    --kr: "Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --num: "Orbitron", ui-monospace, monospace;
+  }
+  html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
+  body { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  canvas { display: block; position: fixed; inset: 0; width: 100%; height: 100%; }
+  #snd {
+    position: fixed; right: calc(env(safe-area-inset-right, 0px) + 12px); bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    font: 15px var(--kr); color: var(--ink); background: rgba(4, 20, 15, .7); border: 1.5px solid rgba(93, 255, 195, .4);
+    border-radius: 999px; padding: 8px 16px; cursor: pointer;
+  }
+  #snd:focus-visible { outline: 3px solid var(--mint); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="HBM 쌓기 게임 화면. 칩이 지나갈 때 눌러서 아래 칩 위에 쌓는다."></canvas>
+<button id="snd" type="button">소리 켬</button>
+<script>
+(() => {
+  "use strict";
+  // ================= 화면 =================
+  const W = 480, H = 720;
+  const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+  let S = 1, OX = 0, OY = 0, DPR = 1, EX0 = 0, EX1 = W, EY0 = 0, EY1 = H, bgCache = null;
+  function fit() {
+    const vv = window.visualViewport, w = vv ? vv.width : innerWidth, h = vv ? vv.height : innerHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+    S = Math.min(w / W, h / H); OX = (w - W * S) / 2; OY = (h - H * S) / 2;
+    EX0 = -OX / S; EX1 = W + OX / S; EY0 = -OY / S; EY1 = H + OY / S;
+    bgCache = null;
+  }
+  addEventListener("resize", fit);
+  if (window.visualViewport) visualViewport.addEventListener("resize", fit);
+  fit();
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const FONT = { kr: css("--kr"), num: css("--num") };
+
+  // ================= 소리 =================
+  let actx = null, master = null, noiseBuf = null, sndOn = true, guardAT = -1, guardWall = 0;
+  function audio() {
+    if (actx) return actx;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+      actx = new AC(); master = actx.createGain(); master.gain.value = sndOn ? 0.85 : 0; master.connect(actx.destination);
+      noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
+      const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    } catch (e) { actx = null; }
+    return actx;
+  }
+  // 소리 지킴이: 휴대폰이 소리를 재우거나 얼려 두면 손이 닿을 때마다 깨운다
+  function wakeAudio() {
+    try { if (navigator.audioSession && navigator.audioSession.type !== "playback") navigator.audioSession.type = "playback"; } catch (e) {}
+    if (!actx) return;
+    try {
+      const t = performance.now();
+      if (actx.state === "running" && guardAT >= 0 && t - guardWall > 1500 && actx.currentTime === guardAT) {
+        try { actx.close(); } catch (e) {}
+        actx = null; audio(); if (!actx) return;
+      }
+      if (actx.state !== "running") actx.resume();
+      const b = actx.createBuffer(1, 1, 22050), src = actx.createBufferSource();
+      src.buffer = b; src.connect(actx.destination); src.start(0);
+      guardAT = actx.currentTime; guardWall = t;
+    } catch (e) {}
+  }
+  ["pointerdown", "pointerup", "touchend", "click", "keydown"].forEach(ev => addEventListener(ev, wakeAudio, { capture: true, passive: true }));
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) wakeAudio(); });
+  addEventListener("pageshow", wakeAudio);
+
+  function tone(f, dur, type = "sine", vol = 0.1, to = 0, delay = 0) {
+    const a = audio(); if (!a) return;
+    const t0 = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t0); if (to) o.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(master); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function noise(dur, vol, type = "highpass", freq = 2000, delay = 0, to = 0) {
+    const a = audio(); if (!a) return;
+    const t0 = a.currentTime + delay, src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = noiseBuf; src.loop = true; f.type = type; f.frequency.setValueAtTime(freq, t0); if (to) f.frequency.exponentialRampToValueAtTime(to, t0 + dur);
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(f).connect(g).connect(master); src.start(t0, Math.random() * 0.5); src.stop(t0 + dur + 0.05);
+  }
+  // 딱 맞을 때마다 한 음씩 올라가는 5음 음계
+  const PENTA = [0, 2, 4, 7, 9];
+  const note = n => 523.25 * Math.pow(2, (Math.floor(n / 5) * 12 + PENTA[n % 5]) / 12);
+  const sfx = {
+    place() { tone(180, 0.09, "triangle", 0.28, 90); noise(0.05, 0.16, "bandpass", 3200); },
+    perfect(n) { const f = note(Math.min(n, 19)); tone(f, 0.3, "sine", 0.2); tone(f * 2, 0.22, "sine", 0.06, 0, 0.02); tone(f * 1.5, 0.35, "triangle", 0.05, 0, 0.05); },
+    cut() { noise(0.12, 0.22, "highpass", 5000, 0, 1800); tone(240, 0.1, "triangle", 0.18, 120); },
+    fall() { tone(420, 0.5, "sine", 0.06, 110); },
+    miss() { tone(330, 0.7, "sawtooth", 0.08, 70); noise(0.5, 0.12, "lowpass", 900, 0, 120); },
+    hop() { tone(700, 0.08, "square", 0.025, 1100); },
+    mile() { [0, 4, 7, 12].forEach((s, i) => tone(523.25 * Math.pow(2, s / 12), 0.5, "triangle", 0.09, 0, i * 0.08)); },
+    start() { tone(392, 0.1, "square", 0.04); tone(784, 0.16, "square", 0.04, 0, 0.09); },
+  };
+  const vib = ms => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} };
+  const sndBtn = document.getElementById("snd");
+  sndBtn.addEventListener("pointerdown", e => e.stopPropagation());
+  sndBtn.addEventListener("click", e => {
+    e.stopPropagation(); sndOn = !sndOn; sndBtn.textContent = sndOn ? "소리 켬" : "소리 끔"; sndBtn.blur();
+    if (audio()) master.gain.value = sndOn ? 0.85 : 0;
+  });
+
+  // ================= 비스듬히 내려다보기 =================
+  // 세계 좌표: x(오른쪽 아래로), z(왼쪽 아래로), y(위). 화면에는 x+z가 아래, x-z가 오른쪽
+  const IA = Math.cos(Math.PI / 6), IB = Math.sin(Math.PI / 6);
+  const BASEY = 520, LH = 16, SIZE = 150, RANGE = 190;
+  let cam = 0, camT = 0, zoom = 1;
+  function P(x, y, z) { return { x: 240 + (x - z) * IA * zoom, y: BASEY + ((x + z) * IB - (y - cam)) * zoom }; }
+
+  // ================= 상태 =================
+  // 3GB(24Gb) 칩 한 장이 한 층. 실제 제품 단수에 맞춰 이정표
+  const GB = 3;
+  const MILES = { 4: "HBM 첫 세대 4단", 8: "HBM3 8단", 12: "HBM3E 12단", 16: "HBM4 16단", 20: "세상에 없는 20단" };
+  let state = "title", now = 0, last = performance.now();
+  let stack = [], mover = null, falling = [], beams = [], rings = [], pops = [], sparks = [];
+  let combo = 0, best = +(store.get("hbm.best") || 0), overAt = 0, newBest = false, shake = 0, milestone = null;
+  const zero = { y: 0, vy: 0, squash: 0, mood: "idle", moodUntil: 0, lean: 0, fall: null, blinkAt: 2 };
+
+  function tint(i) {
+    // 층마다 아주 조금씩 색이 돈다: 아래는 짙은 청록, 위로 갈수록 민트에서 호박색 쪽으로
+    const h = 160 - Math.min(i, 40) * 2.2, l = i % 2 ? 0 : 3;
+    return { top: `hsl(${h},38%,${17 + l}%)`, right: `hsl(${h},42%,${11 + l}%)`, left: `hsl(${h},40%,${7 + l}%)`, glow: `hsl(${h},100%,68%)` };
+  }
+  function reset() {
+    stack = [{ x: 0, z: 0, w: SIZE + 24, d: SIZE + 24, y: -LH * 1.6, h: LH * 1.6, base: true, col: { top: "#14241f", right: "#0c1814", left: "#08110e", glow: "#5dffc3" } }];
+    stack.push({ x: 0, z: 0, w: SIZE, d: SIZE, y: 0, h: LH, col: tint(0), born: -9 });
+    falling = []; beams = []; rings = []; pops = []; sparks = []; combo = 0; cam = 0; camT = 0; zoom = 1; milestone = null;
+    Object.assign(zero, { y: 0, vy: 0, squash: 0, mood: "idle", lean: 0, fall: null });
+    spawn();
+  }
+  const top = () => stack[stack.length - 1];
+  const layers = () => stack.length - 2;              // 베이스 다이 위에 쌓은 메모리 칩 수 (처음 한 장 빼고)
+  function spawn() {
+    const t = top(), n = stack.length - 1, axis = n % 2 ? "x" : "z", dir = Math.random() < 0.5 ? -1 : 1;
+    const speed = Math.min(430, 150 + layers() * 9);
+    mover = { x: t.x, z: t.z, w: t.w, d: t.d, y: t.y + t.h, h: LH, axis, pos: dir * RANGE, dir: -dir, speed, col: tint(n) };
+    if (axis === "x") mover.x = t.x + mover.pos; else mover.z = t.z + mover.pos;
+  }
+
+  function start() { state = "play"; reset(); newBest = false; sfx.start(); }
+  function drop() {
+    const t = top(), m = mover; if (!m) return;
+    const ax = m.axis, size = ax === "x" ? "w" : "d";
+    const delta = m[ax] - t[ax], over = t[size] - Math.abs(delta);
+    if (over <= 0) { gameOver(m); return; }
+    const nb = { x: m.x, z: m.z, w: m.w, d: m.d, y: m.y, h: m.h, col: m.col, born: now };
+    if (Math.abs(delta) < 4.5) {
+      // 딱 맞음: 구멍이 한 줄로 이어진다
+      nb[ax] = t[ax]; combo++;
+      if (combo >= 4) nb[size] = Math.min(SIZE, nb[size] + 6);   // 연속으로 맞추면 칩이 조금 되살아난다
+      sfx.perfect(combo - 1); vib(12);
+      beams.push({ at: now, from: Math.max(1, stack.length - combo), x: nb.x, z: nb.z, w: nb.w, d: nb.d });
+      rings.push({ at: now, x: nb.x, z: nb.z, y: nb.y + nb.h, w: nb.w, d: nb.d });
+      pop(combo > 1 ? `딱! ×${combo}` : "딱!", "#5dffc3");
+      zero.mood = "joy"; zero.moodUntil = now + 0.9;
+    } else {
+      // 어긋난 만큼 잘라 떨어뜨린다
+      combo = 0;
+      nb[size] = over; nb[ax] = t[ax] + delta / 2;
+      const cut = { x: m.x, z: m.z, w: m.w, d: m.d, y: m.y, h: m.h, col: m.col, vy: 0, vh: Math.sign(delta) * 60, at: now };
+      cut[size] = Math.abs(delta);
+      cut[ax] = nb[ax] + Math.sign(delta) * (over / 2 + Math.abs(delta) / 2);
+      cut.axis = ax; falling.push(cut);
+      sfx.place(); sfx.cut(); setTimeout(sfx.fall, 120); vib(20); shake = 4;
+      zero.mood = over < t[size] * 0.4 ? "scared" : "oops"; zero.moodUntil = now + 0.9; zero.lean = Math.sign(delta) * 0.35;
+      for (let i = 0; i < 10; i++) sparks.push(edgeSpark(nb, ax, Math.sign(delta)));
+    }
+    if (combo > 0) sfx.place();
+    stack.push(nb);
+    zero.vy = 260; zero.squash = 0.35; sfx.hop();
+    const L = layers();
+    if (MILES[L] || (L > 20 && L % 4 === 0)) {
+      milestone = { at: now, text: MILES[L] || `${L}단 — 신기록 영역`, gb: L * GB }; sfx.mile();
+    }
+    camT = Math.max(0, nb.y + nb.h - 190);
+    spawn();
+  }
+  function edgeSpark(nb, ax, sgn) {
+    const ex = ax === "x" ? nb.x + sgn * nb.w / 2 : nb.x + rand(-nb.w / 2, nb.w / 2);
+    const ez = ax === "z" ? nb.z + sgn * nb.d / 2 : nb.z + rand(-nb.d / 2, nb.d / 2);
+    return { x: ex, z: ez, y: nb.y + nb.h, vx: rand(-40, 40) + (ax === "x" ? sgn * 80 : 0), vz: rand(-40, 40) + (ax === "z" ? sgn * 80 : 0), vy: rand(60, 180), t: 0, life: rand(0.35, 0.7) };
+  }
+  function gameOver(m) {
+    state = "over"; overAt = now;
+    falling.push({ ...m, vy: 0, vh: m.dir * 40, at: now, axis: m.axis, whole: true });
+    mover = null; combo = 0; shake = 8; vib([60, 40, 80]);
+    sfx.place(); sfx.miss();
+    zero.fall = { at: now, vx: rand(-60, 60), vy: 120 }; zero.mood = "scared";
+    const L = layers();
+    if (L > best) { best = L; newBest = true; store.set("hbm.best", String(best)); }
+  }
+  function pop(text, color) { pops.push({ text, color, at: now }); }
+
+  // ================= 입력 =================
+  function press() {
+    audio(); wakeAudio();
+    if (state === "title") { start(); return; }
+    if (state === "over") { if (now - overAt > 1.1) start(); return; }
+    drop();
+  }
+  addEventListener("pointerdown", e => { if (e.button > 0) return; press(); });
+  addEventListener("keydown", e => { if ((e.code === "Space" || e.code === "Enter") && !e.repeat) { e.preventDefault(); press(); } });
+  addEventListener("contextmenu", e => e.preventDefault());
+
+  // ================= 갱신 =================
+  function update(dt) {
+    if (state === "play" && mover) {
+      const m = mover, t = top();
+      m.pos += m.dir * m.speed * dt;
+      if (m.pos > RANGE) { m.pos = RANGE; m.dir = -1; } else if (m.pos < -RANGE) { m.pos = -RANGE; m.dir = 1; }
+      if (m.axis === "x") m.x = t.x + m.pos; else m.z = t.z + m.pos;
+    }
+    for (const f of falling) {
+      f.vy -= 900 * dt; f.y += f.vy * dt;
+      if (f.axis === "x") f.x += f.vh * dt; else f.z += f.vh * dt;
+    }
+    falling = falling.filter(f => now - f.at < 2.2);
+    for (const s of sparks) { s.t += dt; s.x += s.vx * dt; s.z += s.vz * dt; s.vy -= 500 * dt; s.y += s.vy * dt; }
+    sparks = sparks.filter(s => s.t < s.life);
+    // 0: 칩이 내려앉을 때마다 폴짝
+    zero.vy -= 1400 * dt; zero.y = Math.max(0, zero.y + zero.vy * dt); if (zero.y === 0) zero.vy = 0;
+    zero.squash *= Math.pow(0.002, dt); zero.lean *= Math.pow(0.05, dt);
+    if (now > zero.moodUntil && !zero.fall) zero.mood = "idle";
+    // 카메라: 탑 꼭대기를 따라 올라가고, 끝나면 멀리서 탑 전체를 비춘다
+    if (state === "over" && now - overAt > 0.9) {
+      // 탑 전체가 화면 가운데 들어오게 물러선다
+      const hTop = top().y + top().h, z = clamp(380 / (hTop + 160), 0.3, 1), k = 1 - Math.pow(0.03, dt);
+      zoom = lerp(zoom, z, k); cam = lerp(cam, Math.max(0, hTop / 2 - 170 / zoom), k);
+    } else {
+      cam = lerp(cam, camT, 1 - Math.pow(0.004, dt)); zoom = lerp(zoom, 1, 1 - Math.pow(0.01, dt));
+    }
+    shake *= Math.pow(0.001, dt);
+  }
+
+  // ================= 그리기 =================
+  function buildBg() {
+    const c = document.createElement("canvas");
+    c.width = Math.ceil((EX1 - EX0) * S * DPR); c.height = Math.ceil((EY1 - EY0) * S * DPR);
+    const g = c.getContext("2d"); g.setTransform(S * DPR, 0, 0, S * DPR, -EX0 * S * DPR, -EY0 * S * DPR);
+    const gr = g.createLinearGradient(0, EY0, 0, EY1);
+    gr.addColorStop(0, "#020605"); gr.addColorStop(0.6, "#05120e"); gr.addColorStop(1, "#071a14");
+    g.fillStyle = gr; g.fillRect(EX0, EY0, EX1 - EX0, EY1 - EY0);
+    // 기판 배선: 직각으로 꺾이는 가는 금빛·초록 선
+    let seed = 11; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+    g.lineWidth = 1.2; g.lineCap = "round";
+    for (let i = 0; i < 46; i++) {
+      let x = EX0 + rnd() * (EX1 - EX0), y = EY0 + rnd() * (EY1 - EY0);
+      g.strokeStyle = rnd() < 0.8 ? "rgba(93,255,195,.07)" : "rgba(255,181,71,.08)";
+      g.beginPath(); g.moveTo(x, y);
+      for (let k = 0; k < 4; k++) { const L = 30 + rnd() * 90; if (k % 2) x += (rnd() < 0.5 ? -1 : 1) * L; else y += (rnd() < 0.5 ? -1 : 1) * L; g.lineTo(x, y); }
+      g.stroke(); g.fillStyle = "rgba(93,255,195,.12)"; g.beginPath(); g.arc(x, y, 2.2, 0, 7); g.fill();
+    }
+    return c;
+  }
+
+  function quad(a, b, c, d) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath(); }
+  function drawBox(b, opt = {}) {
+    const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2, yb = b.y, yt = b.y + b.h;
+    const a = opt.alpha == null ? 1 : opt.alpha;
+    ctx.globalAlpha = a;
+    // 앞오른쪽 면(+x)과 앞왼쪽 면(+z)
+    ctx.fillStyle = b.col.right; quad(P(x1, yt, z0), P(x1, yt, z1), P(x1, yb, z1), P(x1, yb, z0)); ctx.fill();
+    ctx.fillStyle = b.col.left; quad(P(x0, yt, z1), P(x1, yt, z1), P(x1, yb, z1), P(x0, yb, z1)); ctx.fill();
+    // 칩 사이 마이크로 범프: 옆면 아래쪽 금빛 점선
+    if (!b.base) {
+      ctx.strokeStyle = "rgba(255,190,90,.55)"; ctx.lineWidth = 1.4 * zoom; ctx.setLineDash([2 * zoom, 3 * zoom]);
+      let p = P(x1, yb + 1.5, z0), q = P(x1, yb + 1.5, z1); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+      p = P(x0, yb + 1.5, z1); q = P(x1, yb + 1.5, z1); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    // 윗면
+    ctx.fillStyle = b.col.top; quad(P(x0, yt, z0), P(x1, yt, z0), P(x1, yt, z1), P(x0, yt, z1)); ctx.fill();
+    // 윗면 TSV 구멍: 칩 가운데를 기준으로 16 간격
+    if (opt.dots !== false && zoom > 0.45) {
+      ctx.fillStyle = opt.lit ? `rgba(200,255,235,${0.5 + opt.lit * 0.5})` : "rgba(93,255,195,.28)";
+      const sp = 16, nx = Math.floor((b.w - 10) / sp / 2), nz = Math.floor((b.d - 10) / sp / 2);
+      for (let i = -nx; i <= nx; i++) for (let j = -nz; j <= nz; j++) {
+        const p = P(b.x + i * sp, yt, b.z + j * sp); ctx.fillRect(p.x - 1.2 * zoom, p.y - 0.6 * zoom, 2.4 * zoom, 1.2 * zoom);
+      }
+    }
+    // 테두리 빛
+    ctx.strokeStyle = opt.edge || "rgba(93,255,195,.35)"; ctx.lineWidth = (opt.edgeW || 1) * zoom;
+    quad(P(x0, yt, z0), P(x1, yt, z0), P(x1, yt, z1), P(x0, yt, z1)); ctx.stroke();
+    let p = P(x1, yt, z1), q = P(x1, yb, z1); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawStack() {
+    // 아래 바닥 그림자와 빛
+    const b0 = stack[0], c = P(b0.x, b0.y, b0.z);
+    const rg = ctx.createRadialGradient(c.x, c.y + 20 * zoom, 0, c.x, c.y + 20 * zoom, 260 * zoom);
+    rg.addColorStop(0, "rgba(93,255,195,.12)"); rg.addColorStop(1, "rgba(93,255,195,0)");
+    ctx.fillStyle = rg; ctx.beginPath(); ctx.ellipse(c.x, c.y + 20 * zoom, 280 * zoom, 150 * zoom, 0, 0, 7); ctx.fill();
+    const lastBeam = beams.length ? beams[beams.length - 1] : null;
+    stack.forEach((b, i) => {
+      const age = b.born != null ? now - b.born : 9;
+      const isTop = i === stack.length - 1;
+      let lit = 0;
+      if (lastBeam && i >= lastBeam.from && now - lastBeam.at < 0.7) lit = 1 - (now - lastBeam.at) / 0.7;
+      drawBox(b, { lit, edge: isTop ? "rgba(93,255,195,.85)" : age < 0.4 ? `rgba(255,255,255,${0.8 - age * 2})` : undefined, edgeW: isTop ? 1.6 : 1, dots: isTop || lit > 0 || i === 0 ? true : false });
+    });
+  }
+  function drawBeams() {
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    for (const bm of beams) {
+      const e = now - bm.at; if (e > 0.8) continue;
+      const a = 1 - e / 0.8, lo = stack[bm.from] || stack[1], hi = top();
+      const p0 = P(bm.x, lo.y, bm.z), p1 = P(bm.x, hi.y + hi.h + 60 * (1 - a), bm.z), w = (bm.w * IA * 0.9) * zoom;
+      const g = ctx.createLinearGradient(p0.x - w, 0, p0.x + w, 0);
+      g.addColorStop(0, "rgba(93,255,195,0)"); g.addColorStop(0.5, `rgba(180,255,230,${0.45 * a})`); g.addColorStop(1, "rgba(93,255,195,0)");
+      ctx.fillStyle = g; ctx.fillRect(p0.x - w, p1.y, w * 2, p0.y - p1.y);
+      ctx.fillStyle = `rgba(230,255,245,${0.8 * a})`; ctx.fillRect(p0.x - 1.5, p1.y, 3, p0.y - p1.y);
+    }
+    beams = beams.filter(bm => now - bm.at < 0.8);
+    for (const r of rings) {
+      const e = now - r.at; if (e > 0.5) continue;
+      const u = easeOut(e / 0.5), k = 1 + u * 0.5;
+      ctx.strokeStyle = `rgba(93,255,195,${1 - u})`; ctx.lineWidth = 3 * (1 - u) + 1;
+      quad(P(r.x - r.w / 2 * k, r.y, r.z - r.d / 2 * k), P(r.x + r.w / 2 * k, r.y, r.z - r.d / 2 * k), P(r.x + r.w / 2 * k, r.y, r.z + r.d / 2 * k), P(r.x - r.w / 2 * k, r.y, r.z + r.d / 2 * k)); ctx.stroke();
+    }
+    rings = rings.filter(r => now - r.at < 0.5);
+    ctx.restore();
+  }
+  function drawSparks() {
+    ctx.fillStyle = "#ffd98a";
+    for (const s of sparks) { const p = P(s.x, s.y, s.z); ctx.globalAlpha = 1 - s.t / s.life; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); }
+    ctx.globalAlpha = 1;
+  }
+  function drawMover() {
+    if (!mover) return;
+    const m = mover;
+    // 내려앉을 자리를 미리 비추는 그림자
+    const t = top();
+    ctx.fillStyle = "rgba(0,0,0,.25)";
+    const yt = t.y + t.h;
+    const x0 = Math.max(m.x - m.w / 2, t.x - t.w / 2), x1 = Math.min(m.x + m.w / 2, t.x + t.w / 2), z0 = Math.max(m.z - m.d / 2, t.z - t.d / 2), z1 = Math.min(m.z + m.d / 2, t.z + t.d / 2);
+    if (x1 > x0 && z1 > z0) { quad(P(x0, yt, z0), P(x1, yt, z0), P(x1, yt, z1), P(x0, yt, z1)); ctx.fill(); }
+    drawBox(m, { edge: "rgba(230,255,245,.9)", edgeW: 1.6 });
+  }
+  function drawFalling() {
+    for (const f of falling) drawBox(f, { alpha: clamp(1 - (now - f.at - 0.9) / 1.2, 0, 1), dots: false });
+  }
+  function drawZero() {
+    const t = top(); let base = P(t.x, t.y + t.h, t.z);
+    let x = base.x, y = base.y - zero.y * zoom, rot = zero.lean;
+    if (zero.fall) {
+      const e = now - zero.fall.at; x += zero.fall.vx * e * zoom; y += (-zero.fall.vy * e + 700 * e * e) * zoom; rot = e * 5;
+      if (e > 2) return;
+    }
+    const w = 18 * zoom * (1 + zero.squash * 0.5), h = 26 * zoom * (1 - zero.squash * 0.4);
+    ctx.save(); ctx.translate(x, y - h / 2); ctx.rotate(rot);
+    ctx.fillStyle = "rgba(93,255,195,.18)"; ctx.beginPath(); ctx.ellipse(0, 0, w / 2 + 4, h / 2 + 4, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#5dffc3"; ctx.lineWidth = 3.4 * zoom; ctx.beginPath(); ctx.ellipse(0, 0, w / 2 - 1.5, h / 2 - 1.5, 0, 0, 7); ctx.stroke();
+    // 0의 빈 속에 눈
+    ctx.fillStyle = "#e6fff4"; ctx.strokeStyle = "#e6fff4"; ctx.lineWidth = 1.4 * zoom;
+    const blink = now > zero.blinkAt && now < zero.blinkAt + 0.12; if (now > zero.blinkAt + 0.12) zero.blinkAt = now + rand(2, 4);
+    if (zero.mood === "joy") { [-2.6, 2.6].forEach(dx => { ctx.beginPath(); ctx.arc(dx * zoom, 0, 1.8 * zoom, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke(); }); }
+    else if (zero.mood === "scared") { [-2.6, 2.6].forEach(dx => { ctx.beginPath(); ctx.arc(dx * zoom, -1 * zoom, 1.6 * zoom, 0, 7); ctx.stroke(); }); }
+    else if (zero.mood === "oops") { ctx.fillRect(-3.4 * zoom, -1 * zoom, 2 * zoom, 2 * zoom); ctx.fillRect(1.4 * zoom, -1 * zoom, 2 * zoom, 2 * zoom); }
+    else { const eh = blink ? 0.6 : 3.4; ctx.fillRect(-3.4 * zoom, -2 * zoom, 1.6 * zoom, eh * zoom); ctx.fillRect(1.8 * zoom, -2 * zoom, 1.6 * zoom, eh * zoom); }
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    ctx.save(); ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    const L = Math.max(0, layers());
+    if (state === "play" || state === "over") {
+      ctx.font = `76px ${FONT.kr}`; ctx.fillStyle = "#e6fff4"; ctx.shadowColor = "rgba(93,255,195,.6)"; ctx.shadowBlur = 18;
+      ctx.fillText(`${L}단`, 240, 108); ctx.shadowBlur = 0;
+      ctx.font = `700 18px ${FONT.num}`; ctx.fillStyle = "#5dffc3"; ctx.fillText(`${(L + 1) * GB} GB`, 240, 138);
+      if (best) { ctx.font = `13px ${FONT.kr}`; ctx.fillStyle = "#6fa58f"; ctx.fillText(`최고 ${best}단`, 240, 160); }
+    }
+    // 연속으로 딱 맞춘 표시
+    for (const p of pops) {
+      const e = now - p.at; if (e > 0.8) continue;
+      const u = e / 0.8; ctx.globalAlpha = 1 - u;
+      ctx.font = `${30 + (1 - u) * 6}px ${FONT.kr}`; ctx.fillStyle = p.color; ctx.fillText(p.text, 240, 230 - u * 26);
+    }
+    pops = pops.filter(p => now - p.at < 0.8); ctx.globalAlpha = 1;
+    if (milestone && now - milestone.at < 2.2) {
+      const e = now - milestone.at, a = e < 0.2 ? e / 0.2 : e > 1.8 ? (2.2 - e) / 0.4 : 1, sc = e < 0.2 ? 0.8 + e : 1;
+      ctx.globalAlpha = a; ctx.save(); ctx.translate(240, 628); ctx.scale(sc, sc);
+      ctx.fillStyle = "rgba(4,20,15,.82)"; ctx.strokeStyle = "#ffb547"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(-170, -38, 340, 72, 10) : ctx.rect(-170, -38, 340, 72); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#ffb547"; ctx.font = `28px ${FONT.kr}`; ctx.fillText(`${milestone.text} 달성!`, 0, 2);
+      ctx.fillStyle = "#e6fff4"; ctx.font = `700 14px ${FONT.num}`; ctx.fillText(`${milestone.gb + GB} GB`, 0, 24);
+      ctx.restore(); ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+  function drawTitle() {
+    ctx.save(); ctx.textAlign = "center";
+    ctx.font = `700 15px ${FONT.num}`; ctx.fillStyle = "#6fa58f"; ctx.fillText("HIGH BANDWIDTH MEMORY", 240, 120);
+    ctx.font = `72px ${FONT.kr}`; ctx.fillStyle = "#e6fff4"; ctx.shadowColor = "rgba(93,255,195,.7)"; ctx.shadowBlur = 22;
+    ctx.fillText("HBM 쌓기", 240, 190); ctx.shadowBlur = 0;
+    ctx.font = `18px ${FONT.kr}`; ctx.fillStyle = "#cfe9dd";
+    ctx.fillText("칩이 지나갈 때 눌러서 쌓는다", 240, 236);
+    ctx.fillText("딱 맞추면 TSV 구멍이 이어져 빛난다", 240, 262);
+    ctx.globalAlpha = 0.55 + Math.sin(now * 4) * 0.35; ctx.font = `24px ${FONT.kr}`; ctx.fillStyle = "#5dffc3";
+    ctx.fillText("눌러서 시작", 240, 650); ctx.globalAlpha = 1;
+    if (best) { ctx.font = `14px ${FONT.kr}`; ctx.fillStyle = "#6fa58f"; ctx.fillText(`최고 ${best}단 · ${(best + 1) * GB}GB`, 240, 680); }
+    ctx.restore();
+  }
+  function drawOver() {
+    const e = now - overAt; if (e < 0.9) return;
+    const a = clamp((e - 0.9) / 0.4, 0, 1), L = layers();
+    ctx.save(); ctx.globalAlpha = a; ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(4,12,10,.75)"; ctx.fillRect(EX0, 560, EX1 - EX0, 160);
+    ctx.font = `30px ${FONT.kr}`; ctx.fillStyle = newBest ? "#ffb547" : "#e6fff4";
+    ctx.fillText(newBest ? "최고 기록!" : "빗나갔다", 240, 604);
+    ctx.font = `18px ${FONT.kr}`; ctx.fillStyle = "#cfe9dd";
+    const prod = L >= 16 ? "HBM4급" : L >= 12 ? "HBM3E급" : L >= 8 ? "HBM3급" : L >= 4 ? "HBM급" : "시제품";
+    ctx.fillText(`${L}단 · ${(L + 1) * GB}GB · ${prod}`, 240, 636);
+    if (e > 1.4) { ctx.globalAlpha = a * (0.55 + Math.sin(now * 4) * 0.35); ctx.font = `16px ${FONT.kr}`; ctx.fillStyle = "#5dffc3"; ctx.fillText("눌러서 다시 쌓기", 240, 672); }
+    ctx.restore();
+  }
+
+  function draw() {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (!bgCache) bgCache = buildBg();
+    const sx = rand(-1, 1) * shake, sy = rand(-1, 1) * shake;
+    ctx.drawImage(bgCache, (OX + EX0 * S) * DPR, (OY + EY0 * S) * DPR);
+    ctx.setTransform(S * DPR, 0, 0, S * DPR, (OX + sx * S) * DPR, (OY + sy * S) * DPR);
+    drawStack();
+    drawFalling();
+    drawBeams();
+    drawSparks();
+    if (state !== "title") drawMover();
+    drawZero();
+    ctx.setTransform(S * DPR, 0, 0, S * DPR, OX * DPR, OY * DPR);
+    drawHUD();
+    if (state === "title") drawTitle();
+    if (state === "over") drawOver();
+  }
+
+  function frame(t) {
+    const dt = Math.min(0.05, (t - last) / 1000); last = t;
+    if (!document.hidden) { now += dt; update(dt); }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  reset(); mover = null;
+  requestAnimationFrame(frame);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { FONT.kr = css("--kr"); FONT.num = css("--num"); });
+
+  // 테스트용 읽기 훅
+  window.__hbm = { get state() { return state; }, get mover() { return mover; }, get top() { return top(); }, get layers() { return layers(); }, get combo() { return combo; } };
+})();
+</script>
+</body>
+</html>
