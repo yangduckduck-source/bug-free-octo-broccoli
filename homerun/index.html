@@ -8,12 +8,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&display=swap">
 <style>
-  /* 한 화면: 포수 뒤에서 본 야간 경기장. 위에 LED 전광판, 나머지는 캔버스 하나. */
+  /* 한 화면: 포수 뒤에서 본 클린룸 구장(반도체 공장 속 야구장). 위에 LED 전광판, 나머지는 캔버스 하나. */
   :root {
     color-scheme: dark;
-    --bg: #0b0f1e;
-    --ink: #f4f1e6;
-    --sub: #9aa3b8;
+    --bg: #04110c;
+    --ink: #e6fff4;
+    --sub: #8fbfac;
+    --mint: #5dffc3;
     --led: #ffcf3a;
     --red: #ff4b3e;
     --display: "Black Han Sans", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
@@ -26,10 +27,10 @@
   canvas { display: block; }
   .overlay {
     position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-    text-align: center; padding: 24px; background: rgba(6, 9, 20, .62); pointer-events: none;
+    text-align: center; padding: 24px; background: rgba(2, 12, 9, .66); pointer-events: none;
   }
   .hidden { display: none; }
-  .overlay h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(56px, 16vw, 96px); color: var(--led); line-height: 1; text-shadow: 0 4px 0 #b3361f, 0 10px 30px rgba(0,0,0,.6); }
+  .overlay h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(56px, 16vw, 96px); color: var(--mint); line-height: 1; text-shadow: 0 0 18px rgba(93,255,195,.6), 0 4px 0 #0b3a2e, 0 10px 30px rgba(0,0,0,.6); }
   .overlay h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(36px, 10vw, 56px); color: var(--ink); }
   .overlay p { margin: 0; font-size: 18px; color: var(--ink); max-width: 22em; line-height: 1.5; }
   .overlay .small { font-size: 15px; color: var(--sub); }
@@ -65,6 +66,7 @@
 <div id="stage"><canvas id="c" aria-label="야구 타석"></canvas></div>
 
 <div class="overlay" id="title">
+  <p class="small">반도체 공장 속 클린룸 구장</p>
   <h1>홈런왕</h1>
   <p>공이 홈플레이트에 닿는 순간에 맞춰 누르세요.<br>정확할수록 멀리 날아갑니다. 아웃 세 개면 끝.</p>
   <div class="blink">스페이스 · 클릭 · 터치로 시작</div>
@@ -919,64 +921,79 @@
   // ================= 그리기 =================
   let bgCache = null;
   function drawBackground(c) {
-    // 밤하늘
+    // 클린룸 구장: 천장은 빛나는 필터(FFU) 판이 줄지어 있고, 외야 너머는 LED가 깜박이는 장비 랙,
+    // 그라운드는 정전기 방지 바닥 타일, 내야는 다이(칩) 격자가 새겨진 거대한 웨이퍼다
     const sky = c.createLinearGradient(0, 0, 0, HORIZON);
-    sky.addColorStop(0, "#070a18"); sky.addColorStop(1, "#1b2650");
+    sky.addColorStop(0, "#06121a"); sky.addColorStop(1, "#0c2a2e");
     c.fillStyle = sky; c.fillRect(0, 0, W, HORIZON + 10);
-    // 조명탑
-    for (const x of [40, 440]) {
-      c.fillStyle = "#2a3150"; c.fillRect(x - 2, 40, 4, 150);
-      c.fillStyle = "#fff8d0"; for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) c.fillRect(x - 14 + i * 7, 30 + j * 6, 5, 4);
-      const g = c.createRadialGradient(x, 40, 0, x, 40, 90); g.addColorStop(0, "rgba(255,248,208,.35)"); g.addColorStop(1, "rgba(255,248,208,0)");
-      c.fillStyle = g; c.fillRect(x - 90, -50, 180, 180);
+    // 천장 필터 판: 원근으로 줄어드는 빛 판 격자
+    for (let r = 0; r < 6; r++) {
+      const y0 = 4 + r * r * 3.2 + r * 8, h = Math.max(3, 16 - r * 2.4), n = 5 + r * 2, w = W / n;
+      for (let i = 0; i < n; i++) {
+        const x = i * w + 3, g = c.createLinearGradient(0, y0, 0, y0 + h);
+        g.addColorStop(0, `rgba(220,255,245,${0.5 - r * 0.06})`); g.addColorStop(1, `rgba(150,230,215,${0.18 - r * 0.02})`);
+        c.fillStyle = g; c.fillRect(x, y0, w - 6, h);
+      }
     }
-    // 관중석
-    c.fillStyle = "#151b33"; c.fillRect(0, 150, W, HORIZON - 150);
-    for (let i = 0; i < 900; i++) {
-      const x = Math.random() * W, y = 152 + Math.random() * (HORIZON - 160);
-      c.fillStyle = pick(["#c9475a", "#e9e3cf", "#4f6fd6", "#e8c547", "#2d3658", "#2d3658"]);
-      c.fillRect(x, y, 2, 2);
+    const glow = c.createRadialGradient(W / 2, 0, 0, W / 2, 0, 320); glow.addColorStop(0, "rgba(180,255,235,.16)"); glow.addColorStop(1, "rgba(180,255,235,0)");
+    c.fillStyle = glow; c.fillRect(0, 0, W, HORIZON);
+    // 장비 랙(관중석 자리): 검은 칸마다 작은 LED
+    c.fillStyle = "#0a161b"; c.fillRect(0, 150, W, HORIZON - 150);
+    for (let x = 0; x < W; x += 30) {
+      c.fillStyle = "#101f26"; c.fillRect(x + 1, 152, 28, HORIZON - 156);
+      c.fillStyle = "#16303a"; c.fillRect(x + 1, 152, 28, 2);
+      for (let y = 158; y < HORIZON - 8; y += 7) { c.fillStyle = "#0c181d"; c.fillRect(x + 3, y + 4, 24, 1); }
     }
-    // 외야 펜스
-    c.fillStyle = "#0f5132"; c.fillRect(0, HORIZON - 6, W, 10);
-    c.fillStyle = "#f3c623"; c.fillRect(0, HORIZON - 7, W, 2);
-    // 잔디
+    for (let i = 0; i < 700; i++) {
+      const x = Math.random() * W, y = 156 + Math.random() * (HORIZON - 166);
+      c.fillStyle = pick(["#5dffc3", "#5dffc3", "#3bd1ff", "#ffb547", "#ff5a6a", "#1b3a40", "#1b3a40", "#1b3a40"]);
+      c.fillRect(x, y, 2, 1.5);
+    }
+    // 외야 펜스: 민트 빛 띠
+    c.fillStyle = "#0b2a26"; c.fillRect(0, HORIZON - 6, W, 10);
+    c.fillStyle = "#5dffc3"; c.fillRect(0, HORIZON - 7, W, 2);
+    c.fillStyle = "rgba(93,255,195,.25)"; c.fillRect(0, HORIZON - 10, W, 3);
+    // 바닥: 정전기 방지 타일
     const gr = c.createLinearGradient(0, HORIZON, 0, H);
-    gr.addColorStop(0, "#1f6b33"); gr.addColorStop(1, "#2f8a43");
+    gr.addColorStop(0, "#123a35"); gr.addColorStop(1, "#1d5249");
     c.fillStyle = gr; c.fillRect(0, HORIZON + 4, W, H);
-    // 잔디 줄무늬
-    for (let k = 0; k < 14; k++) {
-      const d0 = 8 + k * 9, d1 = d0 + 4.5, a = proj(0, 0, d0).y, b = proj(0, 0, d1).y;
-      c.fillStyle = "rgba(255,255,255,.035)"; c.fillRect(0, b, W, a - b);
-    }
-    // 내야 흙
+    c.strokeStyle = "rgba(160,255,225,.08)"; c.lineWidth = 1;
+    for (let k = 0; k < 40; k++) { const d = 3 + k * 3.5, y = proj(0, 0, d).y; if (y < HORIZON + 4) break; c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke(); }
+    for (let x = -60; x <= 60; x += 3) { const a = proj(x, 0, 3), b = proj(x, 0, 140); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); }
+    // 내야: 거대한 웨이퍼 (은빛 원판에 무지갯빛 결과 다이 격자)
     const bases = [[0, PLATE_D], [19.4, PLATE_D + 19.4], [0, PLATE_D + 38.8], [-19.4, PLATE_D + 19.4]];
-    c.fillStyle = "#b9824f";
-    c.beginPath();
     const arc = []; for (let i = 0; i <= 20; i++) { const a = -Math.PI / 4 + (i / 20) * Math.PI / 2; arc.push(proj(Math.sin(a) * 29, 0, PLATE_D + Math.cos(a) * 29)); }
     const p0 = proj(-23, 0, PLATE_D + 12), p1 = proj(23, 0, PLATE_D + 12);
-    c.moveTo(p0.x, p0.y); for (const p of arc) c.lineTo(p.x, p.y); c.lineTo(p1.x, p1.y);
-    const ph = proj(0, 0, 1.2); c.lineTo(W, H); c.lineTo(0, H); c.closePath(); c.fill();
-    // 내야 잔디
-    c.fillStyle = "#2a7d3e"; c.beginPath();
+    c.save(); c.beginPath();
+    c.moveTo(p0.x, p0.y); for (const p of arc) c.lineTo(p.x, p.y); c.lineTo(p1.x, p1.y); c.lineTo(W, H); c.lineTo(0, H); c.closePath();
+    const wf = c.createLinearGradient(0, HORIZON, W, H);
+    wf.addColorStop(0, "#7d8fb0"); wf.addColorStop(0.3, "#a9b7cf"); wf.addColorStop(0.5, "#b9a9d6"); wf.addColorStop(0.7, "#9fc7c9"); wf.addColorStop(1, "#7f92ab");
+    c.fillStyle = wf; c.fill(); c.clip();
+    c.strokeStyle = "rgba(40,60,100,.42)"; c.lineWidth = 1;
+    for (let x = -30; x <= 30; x += 2.2) { const a = proj(x, 0, PLATE_D - 2), b = proj(x, 0, PLATE_D + 34); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); }
+    for (let d = PLATE_D - 2; d < PLATE_D + 34; d += 2.2) { const a = proj(-30, 0, d), b = proj(30, 0, d); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); }
+    c.restore();
+    // 내야 안쪽: 짙은 바닥
+    c.fillStyle = "#16443c"; c.beginPath();
     const q = [[0, PLATE_D + 4], [15.4, PLATE_D + 19.4], [0, PLATE_D + 34.8], [-15.4, PLATE_D + 19.4]].map(([x, d]) => proj(x, 0, d));
     c.moveTo(q[0].x, q[0].y); for (const p of q) c.lineTo(p.x, p.y); c.closePath(); c.fill();
-    // 파울 라인
-    c.strokeStyle = "rgba(255,255,255,.85)"; c.lineWidth = 2;
+    // 파울 라인: 민트 빛
+    c.strokeStyle = "rgba(93,255,195,.9)"; c.lineWidth = 2;
     for (const s of [-1, 1]) { const a = proj(0, 0, PLATE_D), b = proj(s * 90, 0, PLATE_D + 90); c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke(); }
     // 베이스
-    c.fillStyle = "#fff";
+    c.fillStyle = "#eafff7";
     for (const [x, d] of bases.slice(1)) { const p = proj(x, 0, d); c.fillRect(p.x - 4, p.y - 1.5, 8, 3); }
-    // 마운드
+    // 마운드: 동그란 웨이퍼 받침
     const m = proj(0, 0, MOUND_D);
-    c.fillStyle = "#c48e5a"; c.beginPath(); c.ellipse(m.x, m.y, 30, 6, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#c3cde0"; c.beginPath(); c.ellipse(m.x, m.y, 30, 6, 0, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "rgba(93,255,195,.6)"; c.lineWidth = 1; c.beginPath(); c.ellipse(m.x, m.y, 30, 6, 0, 0, Math.PI * 2); c.stroke();
     c.fillStyle = "#fff"; c.fillRect(m.x - 5, m.y - 1, 10, 2);
-    // 타석 흙과 홈플레이트
-    c.fillStyle = "#b07a49"; c.beginPath(); c.ellipse(W / 2, 646, 150, 46, 0, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = "rgba(255,255,255,.7)"; c.lineWidth = 2;
+    // 타석: 은빛 판과 홈플레이트
+    c.fillStyle = "#8494ad"; c.beginPath(); c.ellipse(W / 2, 646, 150, 46, 0, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = "rgba(93,255,195,.75)"; c.lineWidth = 2;
     for (const s of [-1, 1]) c.strokeRect(W / 2 + s * 92 - 34, 610, 68, 70);
     const hp = [[-0.22, PLATE_D], [0.22, PLATE_D], [0.22, PLATE_D + 0.22], [0, PLATE_D + 0.43], [-0.22, PLATE_D + 0.22]].map(([x, d]) => proj(x, 0, d));
-    c.fillStyle = "#f6f3ea"; c.beginPath(); c.moveTo(hp[0].x, hp[0].y); for (const p of hp) c.lineTo(p.x, p.y); c.closePath(); c.fill();
+    c.fillStyle = "#f2fbf8"; c.beginPath(); c.moveTo(hp[0].x, hp[0].y); for (const p of hp) c.lineTo(p.x, p.y); c.closePath(); c.fill();
   }
 
   // ================= 사람 골격 =================
@@ -1204,7 +1221,19 @@
       lf: p.lf, rf: p.rf, lfo: norm(add(hFwd, V(0, 0, -0.3))), rfo: norm(add(hAxis, hFwd)),
     };
   }
-  const PITCHER_KIT = { jersey: "#f3f3f0", pants: "#e6e6e0", under: "#1d3a8a", sock: "#1d3a8a", shoe: "#1a1a1a", belt: "#1d3a8a", trim: "#1d3a8a", skin: "#dfa97f" };
+  const PITCHER_KIT = { jersey: "#f2f6f7", pants: "#e8eef0", under: "#e8eef0", sock: "#d6e0e3", shoe: "#c4d0d4", belt: "#2fbf9a", trim: "#2fbf9a", skin: "#dfa97f" };   // 흰 방진복, 민트 이음선, 덧신
+  // 방진 두건 + 이마 위 고글
+  function hood(x, q, r, face) {
+    const g = x.createRadialGradient(q.x - r * 0.3, q.y - r * 0.6, r * 0.1, q.x, q.y, r * 1.3);
+    g.addColorStop(0, "#ffffff"); g.addColorStop(1, "#c9d5d9");
+    x.fillStyle = g; x.beginPath(); x.ellipse(q.x, q.y - r * 0.2, r * 1.12, r * 0.95, 0, Math.PI * 0.95, Math.PI * 2.05); x.closePath(); x.fill();
+    x.strokeStyle = "rgba(47,191,154,.8)"; x.lineWidth = Math.max(0.6, r * 0.08); x.beginPath(); x.moveTo(q.x, q.y - r * 1.12); x.lineTo(q.x, q.y - r * 0.5); x.stroke();
+    // 고글: 투명한 민트 렌즈 두 알
+    const gx = face.x, gy = q.y - r * 0.55;
+    x.fillStyle = "#2a3b40"; x.fillRect(gx - r * 0.85, gy - r * 0.08, r * 1.7, r * 0.16);
+    for (const sd of [-1, 1]) { x.fillStyle = "rgba(140,255,220,.75)"; x.beginPath(); x.ellipse(gx + sd * r * 0.36, gy, r * 0.32, r * 0.22, 0, 0, 7); x.fill(); x.strokeStyle = "#2a3b40"; x.lineWidth = Math.max(0.5, r * 0.07); x.stroke(); }
+    x.fillStyle = "rgba(255,255,255,.8)"; x.beginPath(); x.ellipse(gx - r * 0.45, gy - r * 0.06, r * 0.1, r * 0.05, -0.4, 0, 7); x.fill();
+  }
   let lastHand = null;
   function drawPitcher(c) {
     const p = pitcherPose(), J = pitcherJoints(p);
@@ -1216,9 +1245,9 @@
       lhand: () => {            // 글러브
         const q = pr(J.lw), r = Math.max(2.4, 0.09 * q.k);
         const g = x.createRadialGradient(q.x + r * 0.3, q.y - r * 0.3, r * 0.1, q.x, q.y, r * 1.2);
-        g.addColorStop(0, "#a5672f"); g.addColorStop(1, "#5b3216");
+        g.addColorStop(0, "#5d6a74"); g.addColorStop(1, "#262d33");
         x.fillStyle = g; x.beginPath(); x.ellipse(q.x, q.y, r, r * 1.2, 0.35, 0, 7); x.fill();
-        x.strokeStyle = "#3d200c"; x.lineWidth = Math.max(0.5, r * 0.12); x.beginPath(); x.moveTo(q.x - r * 0.5, q.y - r * 0.2); x.quadraticCurveTo(q.x, q.y + r * 0.3, q.x + r * 0.5, q.y - r * 0.2); x.stroke();
+        x.strokeStyle = "#5dffc3"; x.lineWidth = Math.max(0.5, r * 0.12); x.beginPath(); x.moveTo(q.x - r * 0.5, q.y - r * 0.2); x.quadraticCurveTo(q.x, q.y + r * 0.3, q.x + r * 0.5, q.y - r * 0.2); x.stroke();
       },
       rhand: () => {
         const { q, rr } = ball3(x, pr, J.rw, 0.042, PITCHER_KIT.skin, 1.15);
@@ -1227,10 +1256,10 @@
       torso: () => {
         if (J.fwd.z > -0.15) return;         // 가슴이 카메라 쪽일 때만 단추선과 번호
         const a = pr(add(J.sc, add(mul(J.fwd, 0.15), V(0, -0.02, 0)))), b = pr(add(J.hip, add(mul(J.hfwd, 0.13), V(0, 0.12, 0))));
-        x.strokeStyle = "#1d3a8a"; x.lineWidth = Math.max(0.5, 0.012 * a.k); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
+        x.strokeStyle = "#2fbf9a"; x.lineWidth = Math.max(0.5, 0.012 * a.k); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
         const m = pr(add(lerp3(J.hip, J.sc, 0.62), add(mul(J.fwd, 0.15), mul(sub(J.rsh, J.lsh), -0.25))));
         x.save(); x.translate(m.x, m.y); x.scale(Math.min(1, -J.fwd.z), 1);
-        x.fillStyle = "#1d3a8a"; x.font = `900 ${Math.max(4, 0.13 * m.k)}px sans-serif`; x.textAlign = "center"; x.fillText("1", 0, 0.05 * m.k); x.restore();
+        x.fillStyle = "#1f8f73"; x.font = `900 ${Math.max(4, 0.13 * m.k)}px sans-serif`; x.textAlign = "center"; x.fillText("1", 0, 0.05 * m.k); x.restore();
       },
       head: () => {
         const h = J.head, q = pr(h), r = Math.max(2.4, 0.105 * q.k);
@@ -1238,11 +1267,8 @@
         ball3(x, pr, add(h, mul(J.fwd, 0.02)), 0.1, PITCHER_KIT.skin, 1.12);
         // 귀
         const ear = pr(add(h, mul(sub(J.rsh, J.lsh), 0.22))); x.fillStyle = tone3(PITCHER_KIT.skin, -0.1); x.beginPath(); x.ellipse(ear.x, ear.y, r * 0.22, r * 0.3, 0, 0, 7); x.fill();
-        // 모자: 둥근 정수리 + 챙
-        x.fillStyle = "#1d3a8a"; x.beginPath(); x.ellipse(q.x, q.y - r * 0.35, r * 1.05, r * 0.78, 0, Math.PI, 0); x.fill();
-        const v = pr(add(h, add(mul(J.fwd, 0.16), V(0, 0.05, 0))));
-        x.strokeStyle = "#13286a"; x.lineWidth = Math.max(1, r * 0.4); x.lineCap = "round"; x.beginPath(); x.moveTo(q.x + (v.x - q.x) * 0.2, q.y - r * 0.35); x.lineTo(v.x, v.y - r * 0.2); x.stroke();
-        x.fillStyle = "rgba(0,0,0,.18)"; x.beginPath(); x.ellipse(face.x, face.y - r * 0.15, r * 0.8, r * 0.25, 0, 0, Math.PI); x.fill();   // 챙 그늘
+        // 방진 두건: 정수리와 귀를 덮고, 이마 위에 고글을 올려 썼다
+        hood(x, q, r, face);
       },
     }));
     {
@@ -1381,7 +1407,7 @@
     }
     return poseAt([[P.tRel - 200, idle], [P.tRel + 60, BK_.load], [P.tArr + 160, BK_.load], [P.tArr + 700, idle]], t);
   }
-  const BATTER_KIT = { jersey: "#eeeef3", pants: "#e3e3ea", under: "#1f2a5c", sock: "#1f2a5c", shoe: "#141414", belt: "#1f2a5c", trim: "#1f2a5c", skin: "#dfa97f" };
+  const BATTER_KIT = { jersey: "#f2f6f7", pants: "#e8eef0", under: "#e8eef0", sock: "#d6e0e3", shoe: "#c4d0d4", belt: "#2fbf9a", trim: "#2fbf9a", skin: "#dfa97f" };
   let batYaw = 0;
   function drawBatter(c) {
     const p = batterPose(), th = p.th * Math.PI / 180, hth = p.hth * Math.PI / 180;
@@ -1410,21 +1436,21 @@
     const pts = [head, add(head, V(0, 0.16, 0)), p.ff, p.bf, J.lk, J.rk, fsh, bsh, grip, tip, knob];
     const backVis = clamp(chest.z, 0, 1);          // 등이 카메라를 향한 정도 (옆으로 서 있으면 0)
     figure(c, pr, pts, x => bodyParts(x, pr, J, BATTER_KIT, {
-      lhand: () => ball3(x, pr, J.lw, 0.05, "#c62f2f", 1.15),      // 배팅 장갑
-      rhand: () => ball3(x, pr, J.rw, 0.05, "#c62f2f", 1.15),
+      lhand: () => ball3(x, pr, J.lw, 0.05, "#6c7cf0", 1.15),      // 보라빛 니트릴 장갑
+      rhand: () => ball3(x, pr, J.rw, 0.05, "#6c7cf0", 1.15),
       torso: () => {
         // 등번호·이름: 등이 보일 때만, 몸통 안에 잘라 넣고 돌아간 만큼 좁힌다
         if (backVis > 0.12) {
           const m = pr(add(lerp3(p.hip, sc, 0.6), mul(chest, -0.14))), k = m.k;
           x.save(); x.translate(m.x, m.y); x.scale(backVis, 1); x.globalAlpha = clamp((backVis - 0.12) * 3, 0, 1);
-          x.fillStyle = "#1f2a5c"; x.font = `900 ${Math.round(0.06 * k)}px sans-serif`; x.textAlign = "center"; x.fillText("YANG", 0, -0.12 * k);
+          x.fillStyle = "#1f8f73"; x.font = `900 ${Math.round(0.06 * k)}px sans-serif`; x.textAlign = "center"; x.fillText("YANG", 0, -0.12 * k);
           const no = String((P && P.no) || 1);
-          x.fillStyle = "#c62f2f"; x.font = `${Math.round((no.length > 2 ? 0.14 : 0.19) * k)}px 'Black Han Sans', sans-serif`; x.fillText(no, 0, 0.07 * k);
+          x.fillStyle = "#2fbf9a"; x.font = `${Math.round((no.length > 2 ? 0.14 : 0.19) * k)}px 'Black Han Sans', sans-serif`; x.fillText(no, 0, 0.07 * k);
           x.restore();
         }
         // 옆구리 솔기
         const a = pr(add(fsh, V(0, -0.05, 0))), b = pr(add(fhp, V(0, 0.12, 0)));
-        x.strokeStyle = "rgba(31,42,92,.35)"; x.lineWidth = Math.max(0.6, 0.008 * a.k); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
+        x.strokeStyle = "rgba(47,191,154,.45)"; x.lineWidth = Math.max(0.6, 0.008 * a.k); x.beginPath(); x.moveTo(a.x, a.y); x.lineTo(b.x, b.y); x.stroke();
       },
       head: () => {
         const q = pr(head), r = 0.12 * q.k;
@@ -1434,15 +1460,17 @@
         x.fillStyle = BATTER_KIT.skin; x.beginPath(); x.ellipse(jaw.x, jaw.y, r * 0.42, r * 0.32, 0, 0, 7); x.fill();
         // 헬멧: 광택 그러데이션 + 귀 덮개 + 챙
         const g = x.createRadialGradient(q.x + r * 0.35, q.y - r * 0.45, r * 0.1, q.x, q.y, r * 1.15);
-        g.addColorStop(0, "#5868b4"); g.addColorStop(0.5, "#24306a"); g.addColorStop(1, "#0f1536");
+        g.addColorStop(0, "#ffffff"); g.addColorStop(0.5, "#dfe8eb"); g.addColorStop(1, "#9fb0b6");
         x.fillStyle = g; x.beginPath(); x.ellipse(q.x, q.y - r * 0.1, r * 1.05, r * 0.98, 0, Math.PI * 0.92, Math.PI * 2.12); x.closePath(); x.fill();
         // 귀 덮개: 머리 옆(카메라 쪽 귀)에 붙는다. 정면을 볼수록 옆으로 비켜나며 좁아진다
         const side = norm(V(hf.z, 0, -hf.x)), flap = pr(add(head, add(add(mul(side, 0.075), mul(hf, -0.015)), V(0, -0.05, 0))));
         const fw = clamp(Math.abs(side.z) * 1.1, 0.35, 1);
-        x.fillStyle = "#1a2353"; x.beginPath(); x.ellipse(flap.x, flap.y, r * 0.45 * fw, r * 0.55, -0.15, 0, 7); x.fill();
+        x.fillStyle = "#cfdadd"; x.beginPath(); x.ellipse(flap.x, flap.y, r * 0.45 * fw, r * 0.55, -0.15, 0, 7); x.fill();
         x.fillStyle = "rgba(0,0,0,.35)"; x.beginPath(); x.ellipse(flap.x, flap.y, r * 0.12 * fw, r * 0.12, 0, 0, 7); x.fill();      // 귀 구멍
         const v = pr(add(head, add(mul(hf, 0.17), V(0, 0.02, 0))));
-        x.strokeStyle = "#141c44"; x.lineWidth = r * 0.24; x.lineCap = "round"; x.beginPath(); x.moveTo(q.x + (v.x - q.x) * 0.35, q.y - r * 0.08); x.lineTo(v.x, v.y); x.stroke();
+        x.strokeStyle = "#2fbf9a"; x.lineWidth = r * 0.24; x.lineCap = "round"; x.beginPath(); x.moveTo(q.x + (v.x - q.x) * 0.35, q.y - r * 0.08); x.lineTo(v.x, v.y); x.stroke();
+        // 헬멧 가운데 민트 줄
+        x.strokeStyle = "rgba(47,191,154,.9)"; x.lineWidth = r * 0.14; x.beginPath(); x.ellipse(q.x, q.y - r * 0.1, r * 0.98, r * 0.9, 0, Math.PI * 1.25, Math.PI * 1.75); x.stroke();
         x.fillStyle = "rgba(255,255,255,.45)"; x.beginPath(); x.ellipse(q.x + r * 0.25, q.y - r * 0.55, r * 0.3, r * 0.13, -0.4, 0, 7); x.fill();
       },
       more: it => {
@@ -1476,8 +1504,14 @@
 
   function drawBallAt(c, p, r) {
     c.fillStyle = "rgba(0,0,0,.25)"; c.beginPath(); c.ellipse(p.sx, p.gy, r * 1.1, r * 0.35, 0, 0, 7); c.fill();
-    c.fillStyle = "#fbfbf6"; c.beginPath(); c.arc(p.sx, p.sy, r, 0, 7); c.fill();
-    if (r > 4) { c.strokeStyle = "#d33"; c.lineWidth = Math.max(1, r * 0.12); c.beginPath(); c.arc(p.sx - r * 0.9, p.sy, r * 0.75, -0.9, 0.9); c.stroke(); c.beginPath(); c.arc(p.sx + r * 0.9, p.sy, r * 0.75, Math.PI - 0.9, Math.PI + 0.9); c.stroke(); }
+    // 전자 알갱이: 하얀 심에 민트 빛 무리
+    const gl = c.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, r * 2.4);
+    gl.addColorStop(0, "rgba(93,255,195,.55)"); gl.addColorStop(1, "rgba(93,255,195,0)");
+    c.fillStyle = gl; c.beginPath(); c.arc(p.sx, p.sy, r * 2.4, 0, 7); c.fill();
+    const cg = c.createRadialGradient(p.sx - r * 0.3, p.sy - r * 0.3, r * 0.1, p.sx, p.sy, r);
+    cg.addColorStop(0, "#ffffff"); cg.addColorStop(0.6, "#e6fff6"); cg.addColorStop(1, "#8ff5d2");
+    c.fillStyle = cg; c.beginPath(); c.arc(p.sx, p.sy, r, 0, 7); c.fill();
+    if (r > 4) { c.strokeStyle = "rgba(47,191,154,.7)"; c.lineWidth = Math.max(1, r * 0.1); c.beginPath(); c.ellipse(p.sx, p.sy, r * 1.5, r * 0.45, now / 120, 0, 7); c.stroke(); }
   }
   function ballScreen(w) { const p = proj(w.x, w.y, w.d), g = proj(w.x, 0, w.d); return { sx: p.x, sy: p.y, gy: g.y, k: p.k }; }
 
