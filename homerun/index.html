@@ -358,11 +358,11 @@
     { motion: "side" },
     { pitch: "knuckle" },
   ];
-  // 변화구 비중: 처음 열릴 땐 가끔(약 12%), 레벨마다 늘어 최대 60%쯤
+  // 변화구 비중: 처음 열릴 때부터 열에 둘쯤(18%), 레벨마다 늘어 최대 70%
   const BREAKING = { slider: 1.2, change: 1, curve: 0.9, fork: 0.9, knuckle: 0.35 };
   function pickPitch(L) {
     const brk = G.pool.filter(t => BREAKING[t]);
-    if (brk.length && Math.random() < clamp(0.12 + (L - 3) * 0.07, 0.12, 0.6)) {
+    if (brk.length && Math.random() < clamp(0.18 + (L - 3) * 0.09, 0.18, 0.7)) {
       let r = Math.random() * brk.reduce((a, t) => a + BREAKING[t], 0);
       for (const t of brk) { r -= BREAKING[t]; if (r <= 0) return t; }
       return brk[brk.length - 1];
@@ -370,7 +370,7 @@
     return Math.random() < clamp(0.25 + (L - 1) * 0.03, 0.25, 0.5) ? "power" : "fast";
   }
   const MOTION_NAME = { windup: "와인드업", set: "세트포지션", quick: "퀵모션", hesitate: "멈칫 투구", side: "사이드암" };
-  const PITCHES_PER_LEVEL = 12;
+  const PITCHES_PER_LEVEL = 7;
 
   // ================= 판정 창 (ms) =================
   // 버튼을 누른 순간과 공이 홈에 닿는 순간의 차이
@@ -390,11 +390,33 @@
     { role: "무난한 타자",   pow: 0.8,  con: 0.97, spd: 0.5,  w: 0.97, h: 1.03, suit: WHITE },
     { role: "하위 타선",   pow: 0.4,  con: 0.8,  spd: 0.4,  w: 0.82, h: 0.9, suit: WHITE },
   ];
+  // 투수진: 5점을 내줄 때마다 다음 투수가 올라온다. 뒤로 갈수록 공이 빠르고 레벨이 두 단계씩 뛴다
+  const PITCHERS = [
+    { name: "선발 투수",   kit: {}, hood: "#ffffff", glove: ["#5d6a74", "#262d33"], w: 1,    h: 1,    kmh: 0 },
+    { name: "중간 계투",   kit: { jersey: "#a9dcff", pants: "#93cff7", under: "#93cff7", sock: "#74b9e9", shoe: "#5a9fd0", belt: "#1f6fb0", trim: "#1f6fb0" }, hood: "#d6f0ff", glove: ["#3e6f9a", "#1a3550"], w: 0.94, h: 1.1,  kmh: 3 },
+    { name: "셋업맨",     kit: { jersey: "#c9b0ff", pants: "#b89cf5", under: "#b89cf5", sock: "#9a7fe0", shoe: "#7b62c4", belt: "#5a3fb0", trim: "#5a3fb0" }, hood: "#ebe2ff", glove: ["#6a4fb0", "#2c1d5a"], w: 1.14, h: 1.03, kmh: 5 },
+    { name: "마무리 투수", kit: { jersey: "#30353d", pants: "#272b32", under: "#272b32", sock: "#1c1f24", shoe: "#121417", belt: "#ff4b5a", trim: "#ff4b5a" }, hood: "#3d434c", glove: ["#a52a35", "#4a0f15"], w: 1.22, h: 1.1,  kmh: 7 },
+    { name: "괴물 투수",   kit: { jersey: "#ffd45a", pants: "#f2c443", under: "#f2c443", sock: "#d9a92b", shoe: "#a57a12", belt: "#7a4f00", trim: "#7a4f00" }, hood: "#fff1b8", glove: ["#b8860b", "#5a3d00"], w: 1.32, h: 1.15, kmh: 9 },
+  ];
+  // 교체되는 순간 0.35초는 이전 투수가 사라지고, 그다음 새 투수가 나타난다
+  const PIT = () => { const g = G || {}, i = (g.pChangeAt && now - g.pChangeAt < 0.35) ? g.pPrev : (g.pIdx || 0); return PITCHERS[Math.min(i, PITCHERS.length - 1)]; };
+  function pitcherFade() { const g = G || {}; if (!g.pChangeAt) return 1; const e = now - g.pChangeAt; return e < 0.35 ? 1 - e / 0.35 : e < 0.8 ? (e - 0.35) / 0.45 : 1; }
+  function changePitcher() {
+    G.pPrev = G.pIdx || 0; G.pIdx = G.pPrev + 1; G.pChangeAt = now;
+    for (let k = 0; k < 2 && G.level < 30; k++) {          // 레벨 두 단계: 새 구질·모션도 함께 열린다
+      const L = ++G.level, u = UNLOCK[L];
+      if (u && u.pitch) G.pool.push(u.pitch);
+      if (u && u.motion) G.motions.push(u.motion);
+    }
+    const pt = PITCHERS[Math.min(G.pIdx, PITCHERS.length - 1)];
+    sfx.level(); sfx.crowd(0.2, 1.4); feel("pitcher", "smirk", 2400);
+    banner("투수 교체!", `${pt.name}${G.pIdx >= PITCHERS.length ? " " + (G.pIdx - PITCHERS.length + 2) + "호" : ""} 등판 · LEVEL ${G.level}`, "#ff9b45", 2200);
+  }
   const slotOf = n => ((n - 1) % 9) + 1;            // n번째 타석 → 타순
   const LU = () => LINEUP[P ? P.no : slotOf((G && G.batters) || 1)] || LINEUP[1];
   const spdOf = slot => (LINEUP[slot] || LINEUP[6]).spd;
 
-  const WIN = { hr: 18, double: 30, single: 44, out: 62, foul: 95 };
+  const WIN = { hr: 11, double: 30, single: 44, out: 62, foul: 95 };
 
   // ================= 상태 =================
   let state = "title";     // title | play | over
@@ -437,7 +459,7 @@
     const motion = pick(G.motions);
     // 구속은 KBO 실제 범위에서 고르고, 레벨이 오르면 조금씩(최대 +6) 빨라진다
     const [lo, hi] = PITCHES[type].kmh;
-    const kmh = Math.min(160, Math.round(rand(lo, hi) + Math.min(6, (L - 1) * 0.6)));
+    const kmh = Math.min(163, Math.round(rand(lo, hi) + Math.min(8, (L - 1) * 1.0) + PIT().kmh + Math.max(0, (G.pIdx || 0) - 4) * 2));
     const inZone = Math.random() < 0.56;
     let tx, ty;
     if (inZone) { tx = rand(ZONE.x0 + 0.03, ZONE.x1 - 0.03); ty = rand(ZONE.y0 + 0.04, ZONE.y1 - 0.04); }
@@ -451,7 +473,7 @@
     const rel = releasePoint(side);
     // 날아오는 시간(ms): 실제로는 놓는 곳에서 홈까지 약 17m를 평균 93% 속도로 0.4~0.6초에 온다.
     // 그대로면 눈으로 쫓기 어려워, 중계 느린 화면처럼 늘려 보여 준다(레벨 1은 1.6배 → 점점 실제에 가깝게 1.18배까지)
-    const slow = clamp(1.62 - (L - 1) * 0.035, 1.18, 1.62);
+    const slow = clamp(1.5 - (L - 1) * 0.06, 1.12, 1.5);
     const flight = 17 / (kmh / 3.6 * 0.93) * 1000 * slow;
     // 모션 시간표: 준비 → (다리 들기·멈칫) → 내딛기 → 놓기
     const setT = rand(500, 1100);
@@ -693,6 +715,8 @@
       const n = Math.min(G.hrRun, 4), name = ["백투백 홈런!", "백투백투백!", "백투백투백투백!"][n - 2];
       hype(["b2b", "b2b3", "b2b4"][n - 2], name, `${n}타자 연속 홈런`, "#ffcf3a", 3200); wait = 5600;
     }
+    // 5점을 내줄 때마다 투수 교체
+    if (G.runs >= (G.pNext || 5)) { G.pNext = (G.pNext || 5) + 5; later(changePitcher, wait - 400); wait += 2600; }
     G.balls = 0; G.strikes = 0; G.batters++; nextPitch(wait);
   }
   // 흥분한 중계: 녹음이 있으면 그 목소리로 (없으면 자막과 함성만 — 기계 목소리는 섞지 않는다)
@@ -1252,9 +1276,9 @@
   }
   const PITCHER_KIT = { jersey: "#f2f6f7", pants: "#e8eef0", under: "#e8eef0", sock: "#d6e0e3", shoe: "#c4d0d4", belt: "#2fbf9a", trim: "#2fbf9a", skin: "#dfa97f" };   // 흰 방진복, 민트 이음선, 덧신
   // 방진 두건 + 이마 위 고글
-  function hood(x, q, r, face) {
+  function hood(x, q, r, face, col = "#ffffff") {
     const g = x.createRadialGradient(q.x - r * 0.3, q.y - r * 0.6, r * 0.1, q.x, q.y, r * 1.3);
-    g.addColorStop(0, "#ffffff"); g.addColorStop(1, "#c9d5d9");
+    g.addColorStop(0, col); g.addColorStop(1, tone3(col, -0.22));
     x.fillStyle = g; x.beginPath(); x.ellipse(q.x, q.y - r * 0.2, r * 1.12, r * 0.95, 0, Math.PI * 0.95, Math.PI * 2.05); x.closePath(); x.fill();
     x.strokeStyle = "rgba(47,191,154,.8)"; x.lineWidth = Math.max(0.6, r * 0.08); x.beginPath(); x.moveTo(q.x, q.y - r * 1.12); x.lineTo(q.x, q.y - r * 0.5); x.stroke();
     // 고글: 투명한 민트 렌즈 두 알
@@ -1266,15 +1290,17 @@
   let lastHand = null;
   function drawPitcher(c) {
     const p = pitcherPose(), J = pitcherJoints(p);
-    const pr = makeProjector(0, MOUND_D, 1.45);
+    const PT = PIT(), pr0 = makeProjector(0, MOUND_D, 1.45), gb = pr0(V(0, 0, 0));
+    const pr = q => { const o = pr0(q); return { x: gb.x + (o.x - gb.x) * PT.w, y: gb.y + (o.y - gb.y) * PT.h, k: o.k * PT.w }; };
+    const PK = { ...PITCHER_KIT, ...PT.kit };
     const g0 = pr(V(0.1, 0, -0.4));
     c.fillStyle = "rgba(0,0,0,.28)"; c.beginPath(); c.ellipse(g0.x, g0.y + 1, 18, 3.5, 0, 0, 7); c.fill();
     const pts = [J.head, J.lf, J.rf, J.lw, J.rw, J.lk, J.rk, J.lsh, J.rsh, add(J.head, V(0, 0.15, 0))];
-    figure(c, pr, pts, x => bodyParts(x, pr, J, PITCHER_KIT, {
+    figure(c, pr, pts, x => bodyParts(x, pr, J, PK, {
       lhand: () => {            // 글러브
         const q = pr(J.lw), r = Math.max(2.4, 0.09 * q.k);
         const g = x.createRadialGradient(q.x + r * 0.3, q.y - r * 0.3, r * 0.1, q.x, q.y, r * 1.2);
-        g.addColorStop(0, "#5d6a74"); g.addColorStop(1, "#262d33");
+        g.addColorStop(0, PT.glove[0]); g.addColorStop(1, PT.glove[1]);
         x.fillStyle = g; x.beginPath(); x.ellipse(q.x, q.y, r, r * 1.2, 0.35, 0, 7); x.fill();
         x.strokeStyle = "#5dffc3"; x.lineWidth = Math.max(0.5, r * 0.12); x.beginPath(); x.moveTo(q.x - r * 0.5, q.y - r * 0.2); x.quadraticCurveTo(q.x, q.y + r * 0.3, q.x + r * 0.5, q.y - r * 0.2); x.stroke();
       },
@@ -1297,7 +1323,7 @@
         // 귀
         const ear = pr(add(h, mul(sub(J.rsh, J.lsh), 0.22))); x.fillStyle = tone3(PITCHER_KIT.skin, -0.1); x.beginPath(); x.ellipse(ear.x, ear.y, r * 0.22, r * 0.3, 0, 0, 7); x.fill();
         // 방진 두건: 정수리와 귀를 덮고, 이마 위에 고글을 올려 썼다
-        hood(x, q, r, face);
+        hood(x, q, r, face, PT.hood);
       },
     }));
     {
@@ -1706,6 +1732,11 @@
     c.fillStyle = "rgba(4,17,12,.72)"; c.fillRect(8, 120, w, 22);
     c.fillStyle = P.no === 4 ? "#ff9b45" : "#5dffc3"; c.fillRect(8, 120, 3, 22);
     c.fillStyle = "#e6fff4"; c.fillText(label, 18, 131);
+    // 오른쪽: 지금 투수
+    const pt = PIT(), pl = `투수 · ${pt.name}`, pw = c.measureText(pl).width + 22;
+    c.fillStyle = "rgba(4,17,12,.72)"; c.fillRect(W - 8 - pw, 120, pw, 22);
+    c.fillStyle = pt.kit.jersey || "#ffffff"; c.fillRect(W - 11, 120, 3, 22);
+    c.fillStyle = "#e6fff4"; c.textAlign = "right"; c.fillText(pl, W - 18, 131);
     c.restore();
   }
   function drawBoard(c) {
@@ -1800,7 +1831,9 @@
     else { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bgCache, 0, 0); ctx.restore(); }
     // 관중석 플래시 (홈런 때)
     if (P && P.called === "hr") for (let i = 0; i < 18; i++) { ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(Math.random() * W, 152 + Math.random() * 90, 2, 2); }
+    ctx.globalAlpha = pitcherFade();
     const hand = drawPitcher(ctx).hand;
+    ctx.globalAlpha = 1;
     drawZone(ctx);
     drawPitchTrack(ctx);
     drawPitchBall(ctx, hand);
