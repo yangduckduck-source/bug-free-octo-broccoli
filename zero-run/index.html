@@ -864,9 +864,9 @@
     // 잔상: 공중에 있을 때 0의 궤적을 남긴다
     trailT -= dt;
     if ((!p.ground || TAIL) && trailT <= 0) {
-      trail.push({ x: PX, y: p.y, a: TAIL ? 0.6 : 0.35, h: (t * 360) % 360 });
-      if (TAIL === "zr_bits" && Math.random() < 0.5)
-        parts.push({ x: PX, y: p.y + rand(2, PH - 2), vx: rand(-120, -50), vy: rand(-30, 30), life: 0.5, t: 0, color: C.zero, ch: Math.random() < 0.5 ? "0" : "1" });
+      trail.push({ x: PX, y: p.y, a: TAIL ? 0.8 : 0.35, h: (t * 1100) % 360 });
+      if (TAIL === "zr_bits")
+        parts.push({ x: PX, y: p.y + rand(2, PH - 2), vx: rand(-120, -50), vy: rand(-30, 30), life: 0.7, t: 0, color: Math.random() < 0.7 ? C.zero : "#e6fff4", ch: Math.random() < 0.5 ? "0" : "1" });
       trailT = TAIL ? 0.03 : 0.025;
     }
     for (const q of trail) { q.x -= dx; q.a -= dt * 1.6; }
@@ -1181,7 +1181,7 @@
       ctx.fillStyle = "#ffd23a"; ctx.beginPath(); ctx.ellipse(cx, top + 2, w / 2 + 1, 5, 0, Math.PI, 0); ctx.fill();
       P("#e0a800", -w / 2 - 3, 2, w + 6, 2); P("#fff2a8", -3, -2, 2, 2); P("#e0a800", -1, -3, 2, 5);
     } else if (HAT === "zr_cap") {    // 학사모: 검은 판 위에 노란 술
-      P("#1b1f2a", -3, -2, 6, 3); P("#2b3142", -8, -4, 16, 2); P("#ffcf3a", 6, -3, 1, 6); P("#ffcf3a", 5, 3, 3, 2);
+      P("#3a4560", -4, -3, 8, 4); P("#c9d3df", -9, -6, 18, 1); P("#56627f", -9, -5, 18, 2); P("#ffcf3a", 7, -4, 1, 7); P("#ffcf3a", 6, 3, 3, 2);
     } else if (HAT === "zr_crown") {  // 왕관: 금빛 톱니와 분홍 보석
       ctx.fillStyle = "#ffcf3a"; ctx.beginPath();
       ctx.moveTo(cx - 6, top + 1); ctx.lineTo(cx - 6, top - 5); ctx.lineTo(cx - 3, top - 2); ctx.lineTo(cx, top - 7);

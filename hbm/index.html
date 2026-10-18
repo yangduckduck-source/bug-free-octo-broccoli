@@ -193,7 +193,7 @@
       rings.push({ at: now, x: nb.x, z: nb.z, y: nb.y + nb.h, w: nb.w, d: nb.d });
       pop(combo > 1 ? `딱! ×${combo}` : "딱!", "#5dffc3");
       if (LAND === "chip_ring") for (let k = 1; k <= 3; k++) rings.push({ at: now + k * 0.09, x: nb.x, z: nb.z, y: nb.y + nb.h, w: nb.w, d: nb.d, big: k });
-      if (LAND === "chip_spark") for (let i = 0; i < 26; i++) { const sg = i % 2 ? 1 : -1, s2 = edgeSpark(nb, i % 4 < 2 ? "x" : "z", sg); s2.vy += 120; s2.c = `hsl(${i * 37 % 360},100%,70%)`; sparks.push(s2); }
+      if (LAND === "chip_spark") for (let i = 0; i < 26; i++) { const sg = i % 2 ? 1 : -1, s2 = edgeSpark(nb, i % 4 < 2 ? "x" : "z", sg); s2.vy += 160; s2.life *= 1.5; s2.c = `hsl(${i * 37 % 360},100%,70%)`; sparks.push(s2); }
       zero.mood = "joy"; zero.moodUntil = now + 0.9;
     } else {
       // 어긋난 만큼 잘라 떨어뜨린다
@@ -381,7 +381,7 @@
   }
   function drawSparks() {
     ctx.fillStyle = "#ffd98a";
-    for (const s of sparks) { const p = P(s.x, s.y, s.z); ctx.globalAlpha = 1 - s.t / s.life; ctx.fillStyle = s.c || "#ffd98a"; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); }
+    for (const s of sparks) { const p = P(s.x, s.y, s.z); ctx.globalAlpha = 1 - s.t / s.life; ctx.fillStyle = s.c || "#ffd98a"; const z = s.c ? 5 : 3; ctx.fillRect(p.x - z / 2, p.y - z / 2, z, z); }
     ctx.globalAlpha = 1;
   }
   function drawMover() {

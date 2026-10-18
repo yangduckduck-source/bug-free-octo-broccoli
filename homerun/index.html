@@ -1508,12 +1508,12 @@
     const pts = [head, add(head, V(0, 0.16, 0)), p.ff, p.bf, J.lk, J.rk, fsh, bsh, grip, tip, knob];
     const backVis = clamp(chest.z, 0, 1);          // 등이 카메라를 향한 정도 (옆으로 서 있으면 0)
     const hand = (x, w, el) => {
-      if (GEAR.hand === "bb_wrist") capsule(x, pr, lerp3(w, el, 0.12), lerp3(w, el, 0.26), 0.036, 0.036, "#ffcf3a");
+      if (GEAR.hand === "bb_wrist") capsule(x, pr, lerp3(w, el, 0.2), lerp3(w, el, 0.42), 0.05, 0.048, "#ffcf3a");
       ball3(x, pr, w, 0.05, GEAR.hand === "bb_glove" ? "#e9e4ff" : "#6c7cf0", 1.15);
       if (GEAR.hand === "bb_glove") {          // 반짝이 장갑: 손등에서 별이 번갈아 깜박인다
         const q = pr(w), k = q.k * 0.05;
-        for (let i = 0; i < 3; i++) { const ph = (now / 260 + i * 1.7) % 3; if (ph > 1) continue;
-          star(x, q.x + Math.cos(i * 2.1) * k * 0.7, q.y + Math.sin(i * 2.1) * k * 0.7, k * 0.7 * Math.sin(ph * Math.PI), ["#ff6fb5", "#3bd1ff", "#ffcf3a"][i]); }
+        for (let i = 0; i < 3; i++) { const ph = (now / 260 + i) % 2; if (ph > 1) continue;
+          star(x, q.x + Math.cos(i * 2.1) * k * 0.9, q.y + Math.sin(i * 2.1) * k * 0.9, k * 1.3 * (0.35 + 0.65 * Math.sin(ph * Math.PI)), ["#ff6fb5", "#3bd1ff", "#ffcf3a"][i]); }
       }
     };
     figure(c, pr, pts, x => bodyParts(x, pr, J, KIT, {
@@ -1691,11 +1691,11 @@
       for (let i = 1; i < pts.length; i++) {
         const u = i / pts.length, a = pts[i - 1], b = pts[i], w = Math.max(1.5, 0.05 * b.k) * (0.6 + u * 1.6);
         const fire = GEAR.trail === "bb_fire", fl = fire ? 0.8 + Math.random() * 0.5 : 1;
-        c.strokeStyle = fire ? `rgba(255,70,30,${u * 0.45 * fade})` : `rgba(255,190,60,${u * 0.35 * fade})`; c.lineWidth = w * 3.2 * (fire ? 1.5 * fl : 1);
+        c.strokeStyle = fire ? `rgba(255,70,30,${u * 0.45 * fade})` : `rgba(255,190,60,${u * 0.35 * fade})`; c.lineWidth = w * 3.2 * (fire ? 2.2 * fl : 1);
         c.beginPath(); c.moveTo(a.sx, a.sy); c.lineTo(b.sx, b.sy); c.stroke();
         c.strokeStyle = fire ? `rgba(255,210,90,${u * 0.9 * fade})` : `rgba(255,248,220,${u * 0.85 * fade})`; c.lineWidth = w;
         c.beginPath(); c.moveTo(a.sx, a.sy); c.lineTo(b.sx, b.sy); c.stroke();
-        if (fire && Math.random() < 0.25) { c.fillStyle = `rgba(255,${120 + Math.random() * 100 | 0},40,${u * fade})`; c.fillRect(b.sx + (Math.random() - 0.5) * w * 6, b.sy + (Math.random() - 0.5) * w * 6, 2, 2); }
+        if (fire && Math.random() < 0.6) { c.fillStyle = `rgba(255,${120 + Math.random() * 100 | 0},40,${u * fade})`; const z = 2 + Math.random() * 2.5; c.fillRect(b.sx + (Math.random() - 0.5) * w * 9, b.sy + (Math.random() - 0.5) * w * 9, z, z); }
       }
       c.restore();
     }
