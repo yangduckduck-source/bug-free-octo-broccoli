@@ -212,6 +212,7 @@
   // ---------- 상점: 겉모습만 바꾸는 꾸미기 ----------
   // 코팅(소모형): uses판 동안만 쓰고 닳는다 · 소장판(영구형): 비싸고 높은 직급에서 열린다
   // c: [코팅 가격, 판 수, 필요 직급], p: [소장 가격, 필요 직급]
+  const SLOTS = { skin: "재질", ball: "공", fx: "손맛", glow: "빛", hat: "모자", trail: "꼬리", pat: "무늬", land: "착지", head: "머리", hand: "손", bat: "배트", tool: "도구", bg: "조명", back: "뒷면" };
   const SHOP = [
     { id: "chip_neon", g: "chip", slot: "skin", name: "네온 핑크 칩", c: [250, 20, 0], p: [4000, 3], col: "#ff6fb5" },
     { id: "chip_gold", g: "chip", slot: "skin", name: "금 도금 칩", c: [400, 20, 2], p: [6000, 4], col: "#ffcf3a" },
@@ -224,6 +225,38 @@
     { id: "zr_sky", g: "zero", slot: "glow", name: "하늘빛 0", c: [250, 20, 0], p: [4000, 3], col: "#3bd1ff" },
     { id: "zr_pink", g: "zero", slot: "glow", name: "핑크빛 0", c: [250, 20, 1], p: [4000, 3], col: "#ff6fb5" },
     { id: "zr_gold", g: "zero", slot: "glow", name: "금빛 0", c: [400, 20, 2], p: [6000, 4], col: "#ffcf3a" },
+    // ZERO RUN · 모자 · 꼬리
+    { id: "zr_hood", g: "zero", slot: "hat", name: "방진 후드", c: [300, 20, 0], p: [4500, 3], col: "#eef3f8" },
+    { id: "zr_helmet", g: "zero", slot: "hat", name: "노란 안전모", c: [350, 20, 1], p: [5000, 3], col: "#ffd23a" },
+    { id: "zr_cap", g: "zero", slot: "hat", name: "졸업 학사모", c: [500, 20, 3], p: [7000, 4], col: "#2b3142" },
+    { id: "zr_crown", g: "zero", slot: "hat", name: "팹장의 왕관", c: [800, 10, 5], p: [15000, 6], col: "linear-gradient(135deg,#fff2a8,#ffcf3a 50%,#c8961e)" },
+    { id: "zr_bits", g: "zero", slot: "trail", name: "비트 흩날림", c: [400, 20, 1], p: [6000, 4], col: "repeating-linear-gradient(90deg,#5dffc3 0 4px,transparent 4px 8px)" },
+    { id: "zr_rainbow", g: "zero", slot: "trail", name: "무지개 궤적", c: [600, 20, 3], p: [9000, 5], col: "linear-gradient(90deg,#ff5a6a,#ffcf3a,#5dffc3,#3bd1ff,#b38cff)" },
+    // 칩 쌓기 · 그라데이션 · 무늬 · 착지
+    { id: "chip_dawn", g: "chip", slot: "skin", name: "새벽 그라데이션", c: [350, 20, 1], p: [5000, 3], col: "linear-gradient(135deg,#2c3f8f,#c0508f)" },
+    { id: "chip_dusk", g: "chip", slot: "skin", name: "노을 그라데이션", c: [350, 20, 1], p: [5000, 3], col: "linear-gradient(135deg,#d9782a,#7b3fae)" },
+    { id: "chip_aurora", g: "chip", slot: "skin", name: "오로라 그라데이션", c: [500, 20, 2], p: [7000, 4], col: "linear-gradient(135deg,#2fbf7a,#3bb7e0)" },
+    { id: "chip_circuit", g: "chip", slot: "pat", name: "금빛 회로 무늬", c: [400, 20, 2], p: [6500, 4], col: "repeating-linear-gradient(90deg,#14241f 0 5px,#ffcf3a 5px 7px)" },
+    { id: "chip_spark", g: "chip", slot: "land", name: "딱! 불꽃", c: [400, 20, 1], p: [6000, 4], col: "radial-gradient(circle,#fff 10%,#ffcf3a 35%,#ff5a6a 70%)" },
+    { id: "chip_ring", g: "chip", slot: "land", name: "딱! 파동 링", c: [500, 20, 2], p: [7500, 4], col: "radial-gradient(circle,transparent 30%,#ff6fb5 32% 42%,transparent 44% 58%,#3bd1ff 60% 70%,transparent 72%)" },
+    // 야구왕 · 타자 장신구 · 배트 · 홈런 꼬리
+    { id: "bb_shades", g: "baseball", slot: "head", name: "검은 선글라스", c: [300, 15, 0], p: [4500, 3], col: "#11131a" },
+    { id: "bb_band", g: "baseball", slot: "head", name: "빨간 땀받이 띠", c: [300, 15, 1], p: [4500, 3], col: "#ff4a5a" },
+    { id: "bb_phones", g: "baseball", slot: "head", name: "응원 헤드폰", c: [450, 15, 2], p: [6500, 4], col: "linear-gradient(90deg,#2a2f3f,#ff6fb5)" },
+    { id: "bb_wrist", g: "baseball", slot: "hand", name: "금 손목밴드", c: [350, 15, 1], p: [5000, 3], col: "#ffcf3a" },
+    { id: "bb_glove", g: "baseball", slot: "hand", name: "반짝이 장갑", c: [500, 15, 3], p: [7500, 4], col: "radial-gradient(circle,#fff 15%,#e9e4ff 40%,#ff6fb5 80%)" },
+    { id: "bb_wbat", g: "baseball", slot: "bat", name: "웨이퍼 배트", c: [500, 15, 2], p: [8000, 4], col: "conic-gradient(#7f8fb5,#c7b4e6,#9fe0e8,#c9e7a8,#e8c79f,#7f8fb5)" },
+    { id: "bb_laser", g: "baseball", slot: "bat", name: "레이저 배트", c: [700, 15, 4], p: [11000, 5], col: "linear-gradient(90deg,#1d3b52,#7ff6ff,#e6ffff)" },
+    { id: "bb_fire", g: "baseball", slot: "trail", name: "홈런 불꽃 꼬리", c: [600, 15, 3], p: [9000, 5], col: "linear-gradient(90deg,#ff4620,#ffd25a)" },
+    // 버그 잡기 · 도구 · 조명
+    { id: "bug_hammer", g: "bugs", slot: "tool", name: "뿅망치", c: [300, 20, 0], p: [4500, 3], col: "linear-gradient(90deg,#ff4a5a 60%,#ffe14a 60%)" },
+    { id: "bug_iron", g: "bugs", slot: "tool", name: "납땜 인두", c: [400, 20, 1], p: [6000, 4], col: "linear-gradient(90deg,#2a2f3f,#c9d3df 60%,#ff7a2a)" },
+    { id: "bug_vac", g: "bugs", slot: "tool", name: "클린룸 진공 흡입기", c: [500, 20, 2], p: [7500, 4], col: "linear-gradient(90deg,#dfe8eb,#3bd1ff)" },
+    { id: "bug_night", g: "bugs", slot: "bg", name: "야간 클린룸 조명", c: [450, 20, 2], p: [7000, 4], col: "linear-gradient(180deg,#ffd65a,#0b1510)" },
+    // 99 · 카드 뒷면
+    { id: "nn_wafer", g: "nn", slot: "back", name: "웨이퍼 뒷면", c: [300, 20, 0], p: [4500, 3], col: "conic-gradient(#7f8fb5,#c7b4e6,#9fe0e8,#c9e7a8,#e8c79f,#7f8fb5)" },
+    { id: "nn_pcb", g: "nn", slot: "back", name: "회로 기판 뒷면", c: [400, 20, 1], p: [6000, 4], col: "linear-gradient(135deg,#0f5a3a 60%,#e3b04a 60%)" },
+    { id: "nn_gold", g: "nn", slot: "back", name: "금박 뒷면", c: [700, 20, 4], p: [11000, 5], col: "repeating-linear-gradient(45deg,#c8961e 0 4px,#e8bd4a 4px 8px)" },
   ];
 
   // ---------- 출근 도장 ----------
@@ -352,7 +385,7 @@
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", stamp); else setTimeout(stamp, 0);
   window.FAB = {
-    S, GAMES, MISSIONS, ACH, SHOP, RANKS, ALL_DONE_BONUS,
+    S, GAMES, MISSIONS, ACH, SHOP, SLOTS, RANKS, ALL_DONE_BONUS,
     report, checkIn, buy, equip, equipped, has, rank, rankOf, rollDay, toast, save,
     missionDef, get attToday() { return attToday; }, get lastBuy() { return lastBuy; },
     reload() { Object.assign(S, load()); S.uses = S.uses || {}; rollDay(); },

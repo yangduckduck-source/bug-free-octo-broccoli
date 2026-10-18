@@ -34,7 +34,7 @@
 <body>
 <canvas id="c" aria-label="칩 쌓기 게임 화면. 칩이 지나갈 때 눌러서 아래 칩 위에 쌓는다."></canvas>
 <button id="snd" type="button">소리 켬</button>
-<script src="../common/fab.js?v=6"></script>
+<script src="../common/fab.js?v=7"></script>
 <script>
 (() => {
   "use strict";
@@ -154,6 +154,9 @@
     // 층마다 아주 조금씩 색이 돈다: 아래는 짙은 청록, 위로 갈수록 민트에서 호박색 쪽으로
     if (SKIN === "chip_gold") { const l = i % 2 ? 0 : 4; return { top: `hsl(44,70%,${36 + l}%)`, right: `hsl(40,72%,${24 + l}%)`, left: `hsl(36,70%,${16 + l}%)`, glow: "#ffe08a" }; }
     if (SKIN === "chip_neon") { const l = i % 2 ? 0 : 4; return { top: `hsl(325,60%,${26 + l}%)`, right: `hsl(325,62%,${17 + l}%)`, left: `hsl(325,60%,${11 + l}%)`, glow: "#ff8fd0" }; }
+    // 그라데이션 칩: 한 장 안에서 두 색이 번지고, 층을 오를수록 색이 천천히 돈다
+    const GR = { chip_dawn: [228, 330], chip_dusk: [28, 285], chip_aurora: [150, 200] }[SKIN];
+    if (GR) { const d = Math.sin(i * 0.35) * 14, a = GR[0] + d, b = GR[1] + d; return { top: `hsl(${a},60%,34%)`, top2: `hsl(${b},65%,40%)`, right: `hsl(${a},55%,22%)`, right2: `hsl(${b},60%,26%)`, left: `hsl(${a},52%,14%)`, left2: `hsl(${b},58%,18%)`, glow: `hsl(${b},100%,75%)` }; }
     if (SKIN === "chip_rainbow") { const h = (i * 28) % 360; return { top: `hsl(${h},55%,30%)`, right: `hsl(${h},58%,20%)`, left: `hsl(${h},55%,13%)`, glow: `hsl(${h},100%,72%)` }; }
     const h = 160 - Math.min(i, 40) * 2.2, l = i % 2 ? 0 : 3;
     return { top: `hsl(${h},38%,${17 + l}%)`, right: `hsl(${h},42%,${11 + l}%)`, left: `hsl(${h},40%,${7 + l}%)`, glow: `hsl(${h},100%,68%)` };
@@ -189,6 +192,8 @@
       beams.push({ at: now, from: Math.max(1, stack.length - combo), x: nb.x, z: nb.z, w: nb.w, d: nb.d });
       rings.push({ at: now, x: nb.x, z: nb.z, y: nb.y + nb.h, w: nb.w, d: nb.d });
       pop(combo > 1 ? `딱! ×${combo}` : "딱!", "#5dffc3");
+      if (LAND === "chip_ring") for (let k = 1; k <= 3; k++) rings.push({ at: now + k * 0.09, x: nb.x, z: nb.z, y: nb.y + nb.h, w: nb.w, d: nb.d, big: k });
+      if (LAND === "chip_spark") for (let i = 0; i < 26; i++) { const sg = i % 2 ? 1 : -1, s2 = edgeSpark(nb, i % 4 < 2 ? "x" : "z", sg); s2.vy += 120; s2.c = `hsl(${i * 37 % 360},100%,70%)`; sparks.push(s2); }
       zero.mood = "joy"; zero.moodUntil = now + 0.9;
     } else {
       // 어긋난 만큼 잘라 떨어뜨린다
@@ -291,14 +296,20 @@
     return c;
   }
 
+  const PAT = window.FAB ? FAB.equipped("chip", "pat") : null, LAND = window.FAB ? FAB.equipped("chip", "land") : null;
+  // 면 칠하기: 그라데이션 칩이면 한쪽 모서리에서 반대쪽으로 번진다
+  function face(c1, c2, p0, p1) {
+    if (!c2) return c1;
+    const g = ctx.createLinearGradient(p0.x, p0.y, p1.x, p1.y); g.addColorStop(0, c1); g.addColorStop(1, c2); return g;
+  }
   function quad(a, b, c, d) { ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath(); }
   function drawBox(b, opt = {}) {
     const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2, yb = b.y, yt = b.y + b.h;
     const a = opt.alpha == null ? 1 : opt.alpha;
     ctx.globalAlpha = a;
     // 앞오른쪽 면(+x)과 앞왼쪽 면(+z)
-    ctx.fillStyle = b.col.right; quad(P(x1, yt, z0), P(x1, yt, z1), P(x1, yb, z1), P(x1, yb, z0)); ctx.fill();
-    ctx.fillStyle = b.col.left; quad(P(x0, yt, z1), P(x1, yt, z1), P(x1, yb, z1), P(x0, yb, z1)); ctx.fill();
+    ctx.fillStyle = face(b.col.right, b.col.right2, P(x1, yt, z0), P(x1, yb, z1)); quad(P(x1, yt, z0), P(x1, yt, z1), P(x1, yb, z1), P(x1, yb, z0)); ctx.fill();
+    ctx.fillStyle = face(b.col.left, b.col.left2, P(x0, yt, z1), P(x1, yb, z1)); quad(P(x0, yt, z1), P(x1, yt, z1), P(x1, yb, z1), P(x0, yb, z1)); ctx.fill();
     // 칩 사이 마이크로 범프: 옆면 아래쪽 금빛 점선
     if (!b.base) {
       ctx.strokeStyle = "rgba(255,190,90,.55)"; ctx.lineWidth = 1.4 * zoom; ctx.setLineDash([2 * zoom, 3 * zoom]);
@@ -307,7 +318,16 @@
       ctx.setLineDash([]);
     }
     // 윗면
-    ctx.fillStyle = b.col.top; quad(P(x0, yt, z0), P(x1, yt, z0), P(x1, yt, z1), P(x0, yt, z1)); ctx.fill();
+    ctx.fillStyle = face(b.col.top, b.col.top2, P(x0, yt, z0), P(x1, yt, z1)); quad(P(x0, yt, z0), P(x1, yt, z0), P(x1, yt, z1), P(x0, yt, z1)); ctx.fill();
+    // 회로 무늬: 윗면 네 귀퉁이에서 가운데 패드로 모이는 금빛 배선
+    if (PAT === "chip_circuit" && !b.base && b.w > 14 && b.d > 14) {
+      ctx.strokeStyle = "rgba(255,200,90,.7)"; ctx.lineWidth = 1.1 * zoom; ctx.beginPath();
+      [[x0 + 5, z0 + 5, 1], [x1 - 5, z1 - 5, 1], [x1 - 5, z0 + 5, 0], [x0 + 5, z1 - 5, 0]].forEach(([ax, az, k]) => {
+        const m = k ? P(b.x, yt, az) : P(ax, yt, b.z), a = P(ax, yt, az), e = P(b.x, yt, b.z);
+        ctx.moveTo(a.x, a.y); ctx.lineTo(m.x, m.y); ctx.lineTo(e.x, e.y);
+      }); ctx.stroke();
+      const e = P(b.x, yt, b.z); ctx.fillStyle = "#ffcf3a"; ctx.fillRect(e.x - 2.5 * zoom, e.y - 1.3 * zoom, 5 * zoom, 2.6 * zoom);
+    }
     // 윗면 TSV 구멍: 칩 가운데를 기준으로 16 간격
     if (opt.dots !== false && zoom > 0.45) {
       ctx.fillStyle = opt.lit ? `rgba(200,255,235,${0.5 + opt.lit * 0.5})` : "rgba(93,255,195,.28)";
@@ -351,9 +371,9 @@
     }
     beams = beams.filter(bm => now - bm.at < 0.8);
     for (const r of rings) {
-      const e = now - r.at; if (e > 0.5) continue;
-      const u = easeOut(e / 0.5), k = 1 + u * 0.5;
-      ctx.strokeStyle = `rgba(93,255,195,${1 - u})`; ctx.lineWidth = 3 * (1 - u) + 1;
+      const e = now - r.at; if (e > 0.5 || e < 0) continue;
+      const u = easeOut(e / 0.5), k = 1 + u * (r.big ? 0.6 + r.big * 0.35 : 0.5);
+      ctx.strokeStyle = r.big ? `hsla(${[0, 300, 200, 50][r.big]},100%,72%,${1 - u})` : `rgba(93,255,195,${1 - u})`; ctx.lineWidth = 3 * (1 - u) + 1;
       quad(P(r.x - r.w / 2 * k, r.y, r.z - r.d / 2 * k), P(r.x + r.w / 2 * k, r.y, r.z - r.d / 2 * k), P(r.x + r.w / 2 * k, r.y, r.z + r.d / 2 * k), P(r.x - r.w / 2 * k, r.y, r.z + r.d / 2 * k)); ctx.stroke();
     }
     rings = rings.filter(r => now - r.at < 0.5);
@@ -361,7 +381,7 @@
   }
   function drawSparks() {
     ctx.fillStyle = "#ffd98a";
-    for (const s of sparks) { const p = P(s.x, s.y, s.z); ctx.globalAlpha = 1 - s.t / s.life; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); }
+    for (const s of sparks) { const p = P(s.x, s.y, s.z); ctx.globalAlpha = 1 - s.t / s.life; ctx.fillStyle = s.c || "#ffd98a"; ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3); }
     ctx.globalAlpha = 1;
   }
   function drawMover() {

@@ -78,6 +78,7 @@
   .item .s { color: var(--sub); font-size: 13px; }
   .item .r { font-family: var(--display); font-size: 17px; color: #1f8f73; white-space: nowrap; }
   .item.off { opacity: .55; }
+  .slot { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 6px; margin-right: 6px; border-radius: 6px; background: rgba(93,255,195,.14); color: #8ff5d2; vertical-align: 2px; }
   .cat { display: flex; justify-content: space-between; align-items: baseline; margin: 16px 2px 8px; font-weight: 700; font-size: 15px; }
   .cat b { font-size: 13px; opacity: .7; }
   .bar2 { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #e6e8e6; overflow: hidden; }
@@ -95,7 +96,7 @@
   .recs span { color: var(--sub); font-size: 13px; }
   @media (prefers-reduced-motion: reduce) { a.tile { transition: none; } }
 </style>
-<script src="common/fab.js?v=6"></script>
+<script src="common/fab.js?v=7"></script>
 </head>
 <body>
 <main>
@@ -261,6 +262,7 @@
       } else if (cur === "shop") {
         const by = {}, R = FAB.rank(), RN = FAB.RANKS, nx = RN[R + 1];
         FAB.SHOP.forEach(it => (by[it.g] = by[it.g] || []).push(it));
+        const SO = Object.keys(FAB.SLOTS); Object.values(by).forEach(L => L.sort((a, b) => SO.indexOf(a.slot) - SO.indexOf(b.slot)));
         sheet.innerHTML = top("상점") +
           `<p class="note">겉모습만 바꿉니다(승패 영향 없음). <b>코팅</b>은 정해진 판 수만큼 쓰면 닳고, <b>소장판</b>은 비싸지만 영구입니다. 좋은 꾸미기는 직급이 올라야 열립니다.</p>` +
           `<p class="note">보유 웨이퍼 <b>${num(S.wafers)}장</b> · 직급 <b>${RN[R].name}</b>${nx ? ` · ${nx.name}까지 누적 ${num(nx.at - S.earned)}장` : ""}</p>` +
@@ -270,7 +272,7 @@
             const eq = (perm || left) ? `<button class="buy${on ? " on" : ""}" type="button" data-eq="${it.id}">${on ? "착용 중" : "착용"}</button>` : "";
             const cb = perm ? "" : R < it.c[2] ? `<span class="lock">코팅은 ${RN[it.c[2]].name}부터</span>` : `<button class="buy" type="button" data-buy="${it.id}" data-k="c" ${S.wafers < it.c[0] ? "disabled" : ""}>${it.c[1]}판 ${num(it.c[0])}장</button>`;
             const pb = perm ? "" : R < it.p[1] ? `<span class="lock">소장은 ${RN[it.p[1]].name}부터</span>` : `<button class="buy" type="button" data-buy="${it.id}" data-k="p" ${S.wafers < it.p[0] ? "disabled" : ""}>소장 ${num(it.p[0])}장</button>`;
-            return `<div class="item shop"><div style="display:flex;gap:10px;align-items:center;min-width:0"><i class="swatch" style="background:${it.col}"></i><div class="t">${esc(it.name)}</div>${st ? `<div class="s" style="margin-left:auto;white-space:nowrap">${st}</div>` : ""}</div><div class="btns">${eq}${cb}${pb}</div></div>`;
+            return `<div class="item shop"><div style="display:flex;gap:10px;align-items:center;min-width:0"><i class="swatch" style="background:${it.col}"></i><div class="t"><span class="slot">${esc(FAB.SLOTS[it.slot] || "")}</span>${esc(it.name)}</div>${st ? `<div class="s" style="margin-left:auto;white-space:nowrap">${st}</div>` : ""}</div><div class="btns">${eq}${cb}${pb}</div></div>`;
           }).join("") + `</div>`).join("");
       } else if (cur === "ach") {
         const B = S.best, got = FAB.ACH.filter(a => S.ach[a.id]).length;
