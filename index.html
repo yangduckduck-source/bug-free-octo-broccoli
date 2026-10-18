@@ -78,6 +78,8 @@
   .item .s { color: var(--sub); font-size: 13px; }
   .item .r { font-family: var(--display); font-size: 17px; color: #1f8f73; white-space: nowrap; }
   .item.off { opacity: .55; }
+  .cat { display: flex; justify-content: space-between; align-items: baseline; margin: 16px 2px 8px; font-weight: 700; font-size: 15px; }
+  .cat b { font-size: 13px; opacity: .7; }
   .bar2 { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #e6e8e6; overflow: hidden; }
   .bar2 i { display: block; height: 100%; background: #1f8f73; }
   .swatch { width: 26px; height: 26px; border-radius: 8px; flex: none; }
@@ -93,7 +95,7 @@
   .recs span { color: var(--sub); font-size: 13px; }
   @media (prefers-reduced-motion: reduce) { a.tile { transition: none; } }
 </style>
-<script src="common/fab.js?v=5"></script>
+<script src="common/fab.js?v=6"></script>
 </head>
 <body>
 <main>
@@ -282,15 +284,20 @@
           `<p class="note">${nx ? `누적 웨이퍼 ${num(S.earned)}장 · ${nx.name}까지 ${num(nx.at - S.earned)}장` : "최고 직급에 올랐습니다."}</p>` +
           `<h3 style="font-size:19px">명예의 전당</h3><div class="recs">` +
           rec.map(([n, v, u]) => `<div><span>${n}</span><b>${v ? num(v) + u : "—"}</b></div>`).join("") + `</div>` +
-          `<h3 style="font-size:19px">업적 ${got} / ${FAB.ACH.length}</h3><div class="list">` +
-          FAB.ACH.map(a => `<div class="item${S.ach[a.id] ? "" : " off"}"><div><div class="t">${S.ach[a.id] ? "★ " : ""}${esc(a.label)}</div><div class="s">${esc(a.desc)}</div></div><div class="r">+${a.r}</div></div>`).join("") + `</div>` +
+          `<h3 style="font-size:19px">업적 ${got} / ${FAB.ACH.length}</h3>` +
+          Object.entries({ all: "공장 전체", ...FAB.GAMES }).map(([g, nm]) => {
+            const L = FAB.ACH.filter(a => a.g === g); if (!L.length) return "";
+            const n = L.filter(a => S.ach[a.id]).length;
+            return `<div class="cat"><span>${esc(nm)}</span><b>${n} / ${L.length}</b></div><div class="list">` +
+              L.map(a => `<div class="item${S.ach[a.id] ? "" : " off"}"><div><div class="t">${S.ach[a.id] ? "★ " : ""}${esc(a.label)}</div><div class="s">${esc(a.desc)}</div></div><div class="r">+${a.r}</div></div>`).join("") + `</div>`;
+          }).join("") +
           `<p class="note">온라인 랭킹(친구와 점수 겨루기)은 앱으로 출시할 때 구글 플레이 게임즈·애플 게임센터에 연결합니다.</p>`;
       }
     }
     sheet.addEventListener("click", e => {
       const b = e.target.closest("button"); if (!b) return;
       if (b.classList.contains("x")) return close();
-      if (b.dataset.buy) { if (FAB.buy(b.dataset.buy, b.dataset.k)) FAB.toast({ earned: 0, lines: [] }, "새 꾸미기를 착용했어요"); render(); head(); }
+      if (b.dataset.buy) { if (FAB.buy(b.dataset.buy, b.dataset.k)) FAB.toast(FAB.lastBuy || { earned: 0, lines: [] }, "새 꾸미기를 착용했어요"); render(); head(); }
       if (b.dataset.eq) { FAB.equip(b.dataset.eq); render(); }
     });
     $("#b-mis").addEventListener("click", () => open("mis"));

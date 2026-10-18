@@ -67,28 +67,139 @@
   const missionDef = id => MISSIONS.find(m => m.id === id);
 
   // ---------- 업적 ----------
+  // 업적: g는 어느 게임 칸에 보일지(all = 공장 전체). 한 판 기록은 run, 누적은 cum으로 만든다
+  const T = (g, k) => ((S.tot[g] || {})[k] || 0);
+  const plays = () => Object.keys(GAMES).reduce((a, g) => a + T(g, "plays"), 0);
+  const run = (id, g, k, t, label, desc, r) => ({ id, g, label, desc, r, ok: (gg, s) => gg === g && (+s[k] || 0) >= t });
+  const cum = (id, g, k, t, label, desc, r) => ({ id, g, label, desc, r, ok: () => T(g, k) >= t });
   const ACH = [
-    { id: "first", label: "첫 출근", desc: "아무 게임이나 한 판", r: 10, ok: () => true },
-    { id: "all5", label: "전 라인 순회", desc: "다섯 게임을 모두 한 판씩", r: 40, ok: () => Object.keys(GAMES).every(g => (S.tot[g] || {}).plays) },
-    { id: "chip8", label: "HBM3 양산", desc: "칩 8단 쌓기", r: 30, ok: (g, s) => g === "chip" && s.layers >= 8 },
-    { id: "chip12", label: "HBM3E 양산", desc: "칩 12단 쌓기", r: 60, ok: (g, s) => g === "chip" && s.layers >= 12 },
-    { id: "chip16", label: "HBM4 양산", desc: "칩 16단 쌓기", r: 120, ok: (g, s) => g === "chip" && s.layers >= 16 },
-    { id: "chip20", label: "세상에 없는 칩", desc: "칩 20단 쌓기", r: 250, ok: (g, s) => g === "chip" && s.layers >= 20 },
-    { id: "perf10", label: "TSV 정렬 장인", desc: "칩 쌓기 딱! 10연속", r: 100, ok: (g, s) => g === "chip" && s.maxCombo >= 10 },
-    { id: "bug50", label: "선임 엔지니어", desc: "버그 잡기 한 판 45점", r: 40, ok: (g, s) => g === "bugs" && s.score >= 45 },
-    { id: "bug90", label: "버그 헌터", desc: "버그 잡기 한 판 90점", r: 120, ok: (g, s) => g === "bugs" && s.score >= 90 },
-    { id: "bug500", label: "방역 반장", desc: "버그 500마리 누적", r: 80, ok: () => ((S.tot.bugs || {}).caught || 0) >= 500 },
-    { id: "hr", label: "첫 홈런", desc: "야구왕에서 홈런", r: 20, ok: (g, s) => g === "baseball" && s.hr >= 1 },
-    { id: "b2b", label: "백투백", desc: "두 타자 연속 홈런", r: 60, ok: (g, s) => g === "baseball" && s.b2b },
-    { id: "steal", label: "대도", desc: "도루 성공", r: 20, ok: (g, s) => g === "baseball" && s.steals >= 1 },
-    { id: "runs10", label: "빅이닝", desc: "야구왕 한 판 10점", r: 100, ok: (g, s) => g === "baseball" && s.runs >= 10 },
-    { id: "ace", label: "괴물 사냥", desc: "괴물 투수를 끌어내기 (20점)", r: 200, ok: (g, s) => g === "baseball" && s.runs >= 20 },
-    { id: "zr100", label: "100B 통과", desc: "ZERO RUN 100B", r: 30, ok: (g, s) => g === "zero" && s.bytes >= 100 },
-    { id: "zr250", label: "커널 패닉 생존", desc: "ZERO RUN 250B", r: 120, ok: (g, s) => g === "zero" && s.bytes >= 250 },
-    { id: "nn1", label: "레지스터 장악", desc: "99 첫 승", r: 20, ok: (g, s) => g === "nn" && s.win },
-    { id: "nn3", label: "오버클럭", desc: "99 3연승", r: 80, ok: (g, s) => g === "nn" && s.streak >= 3 },
-    { id: "att7", label: "개근상", desc: "7일 연속 출근", r: 100, ok: () => S.att.streak >= 7 },
-    { id: "w1000", label: "웨이퍼 부자", desc: "웨이퍼 누적 1,000장", r: 50, ok: () => S.earned >= 1000 },
+    // ----- 공장 전체 -----
+    { id: "first", g: "all", label: "첫 출근", desc: "아무 게임이나 한 판", r: 10, ok: () => true },
+    { id: "all5", g: "all", label: "전 라인 순회", desc: "다섯 게임을 모두 한 판씩", r: 40, ok: () => Object.keys(GAMES).every(g => T(g, "plays")) },
+    { id: "p100", g: "all", label: "가동률 100판", desc: "모든 게임 합쳐 100판", r: 60, ok: () => plays() >= 100 },
+    { id: "p500", g: "all", label: "24시간 가동", desc: "모든 게임 합쳐 500판", r: 200, ok: () => plays() >= 500 },
+    { id: "p1000", g: "all", label: "무중단 라인", desc: "모든 게임 합쳐 1,000판", r: 400, ok: () => plays() >= 1000 },
+    { id: "att7", g: "all", label: "개근상", desc: "7일 연속 출근", r: 100, ok: () => S.att.streak >= 7 },
+    { id: "att14", g: "all", label: "2주 개근", desc: "14일 연속 출근", r: 200, ok: () => S.att.streak >= 14 },
+    { id: "att30", g: "all", label: "한 달 개근", desc: "30일 연속 출근", r: 500, ok: () => S.att.streak >= 30 },
+    { id: "day10", g: "all", label: "출근 10일", desc: "출근한 날 모두 10일", r: 60, ok: () => S.att.days >= 10 },
+    { id: "day30", g: "all", label: "출근 30일", desc: "출근한 날 모두 30일", r: 150, ok: () => S.att.days >= 30 },
+    { id: "day100", g: "all", label: "출근 100일", desc: "출근한 날 모두 100일", r: 500, ok: () => S.att.days >= 100 },
+    { id: "w1000", g: "all", label: "웨이퍼 부자", desc: "웨이퍼 누적 1,000장", r: 50, ok: () => S.earned >= 1000 },
+    { id: "w3000", g: "all", label: "웨이퍼 창고", desc: "웨이퍼 누적 3,000장", r: 100, ok: () => S.earned >= 3000 },
+    { id: "w10000", g: "all", label: "웨이퍼 재벌", desc: "웨이퍼 누적 10,000장", r: 300, ok: () => S.earned >= 10000 },
+    { id: "w30000", g: "all", label: "웨이퍼 제국", desc: "웨이퍼 누적 30,000장", r: 800, ok: () => S.earned >= 30000 },
+    { id: "rk1", g: "all", label: "정규직 전환", desc: "사원 승진", r: 20, ok: () => rankOf(S.earned) >= 1 },
+    { id: "rk2", g: "all", label: "첫 부하 직원", desc: "대리 승진", r: 50, ok: () => rankOf(S.earned) >= 2 },
+    { id: "rk3", g: "all", label: "라인 책임", desc: "과장 승진", r: 100, ok: () => rankOf(S.earned) >= 3 },
+    { id: "rk4", g: "all", label: "공정 오너", desc: "책임 승진", r: 200, ok: () => rankOf(S.earned) >= 4 },
+    { id: "rk5", g: "all", label: "기술 장인", desc: "수석 승진", r: 400, ok: () => rankOf(S.earned) >= 5 },
+    { id: "rk6", g: "all", label: "팹의 주인", desc: "팹장 승진", r: 1000, ok: () => rankOf(S.earned) >= 6 },
+    { id: "mis1", g: "all", label: "첫 공정 완료", desc: "오늘의 공정 하나 끝내기", r: 10, ok: () => (S.misDone || 0) >= 1 },
+    { id: "mis10", g: "all", label: "공정 10건", desc: "오늘의 공정 누적 10개", r: 50, ok: () => (S.misDone || 0) >= 10 },
+    { id: "mis50", g: "all", label: "공정 50건", desc: "오늘의 공정 누적 50개", r: 150, ok: () => (S.misDone || 0) >= 50 },
+    { id: "mis150", g: "all", label: "공정의 달인", desc: "오늘의 공정 누적 150개", r: 400, ok: () => (S.misDone || 0) >= 150 },
+    { id: "full1", g: "all", label: "완벽한 하루", desc: "오늘의 공정 셋을 하루에 다", r: 30, ok: () => (S.fullDays || 0) >= 1 },
+    { id: "full7", g: "all", label: "완벽한 일주일", desc: "공정 셋을 다 끝낸 날 7일", r: 150, ok: () => (S.fullDays || 0) >= 7 },
+    { id: "full30", g: "all", label: "무결점 한 달", desc: "공정 셋을 다 끝낸 날 30일", r: 500, ok: () => (S.fullDays || 0) >= 30 },
+    { id: "buy1", g: "all", label: "첫 장비 도입", desc: "상점에서 처음 사기", r: 20, ok: () => (S.buys || 0) >= 1 },
+    { id: "buy10", g: "all", label: "단골 고객", desc: "상점에서 10번 사기", r: 100, ok: () => (S.buys || 0) >= 10 },
+    { id: "own1", g: "all", label: "첫 소장품", desc: "소장판 하나 갖기", r: 150, ok: () => (S.owned || []).length >= 1 },
+    { id: "own5", g: "all", label: "수집가", desc: "소장판 다섯 개 갖기", r: 500, ok: () => (S.owned || []).length >= 5 },
+    // ----- 칩 쌓기 -----
+    run("chip4", "chip", "layers", 4, "HBM 첫 세대", "칩 4단 쌓기", 10),
+    run("chip8", "chip", "layers", 8, "HBM3 양산", "칩 8단 쌓기", 30),
+    run("chip12", "chip", "layers", 12, "HBM3E 양산", "칩 12단 쌓기", 60),
+    run("chip16", "chip", "layers", 16, "HBM4 양산", "칩 16단 쌓기", 120),
+    run("chip20", "chip", "layers", 20, "세상에 없는 칩", "칩 20단 쌓기", 250),
+    run("chip24", "chip", "layers", 24, "차세대 로드맵", "칩 24단 쌓기", 400),
+    run("chip28", "chip", "layers", 28, "물리 한계 도전", "칩 28단 쌓기", 600),
+    run("chip32", "chip", "layers", 32, "전설의 32단", "칩 32단 쌓기", 1000),
+    run("perf3", "chip", "maxCombo", 3, "정렬 감 잡기", "딱! 3연속", 10),
+    run("perf5", "chip", "maxCombo", 5, "정렬 숙련", "딱! 5연속", 30),
+    run("perf10", "chip", "maxCombo", 10, "TSV 정렬 장인", "딱! 10연속", 100),
+    run("perf15", "chip", "maxCombo", 15, "나노 정렬", "딱! 15연속", 250),
+    run("perf20", "chip", "maxCombo", 20, "빛이 꿰뚫는 탑", "딱! 20연속", 500),
+    run("pr10", "chip", "perfect", 10, "딱 열 번", "한 판에 딱! 10번", 40),
+    run("pr20", "chip", "perfect", 20, "딱 스무 번", "한 판에 딱! 20번", 150),
+    cum("chipL100", "chip", "layers", 100, "칩 100장 양산", "누적 100단", 30),
+    cum("chipL500", "chip", "layers", 500, "칩 500장 양산", "누적 500단", 100),
+    cum("chipL2000", "chip", "layers", 2000, "칩 2,000장 양산", "누적 2,000단", 300),
+    cum("chipP100", "chip", "perfect", 100, "딱! 100번", "누적 딱! 100번", 60),
+    cum("chipP1000", "chip", "perfect", 1000, "딱! 1,000번", "누적 딱! 1,000번", 300),
+    cum("chipG10", "chip", "plays", 10, "패키징 라인 견습", "칩 쌓기 10판", 20),
+    cum("chipG100", "chip", "plays", 100, "패키징 라인 반장", "칩 쌓기 100판", 120),
+    // ----- 버그 잡기 -----
+    run("bug20", "bugs", "score", 20, "첫 디버깅", "한 판 20점", 10),
+    run("bug30", "bugs", "score", 30, "주니어 엔지니어", "한 판 30점", 20),
+    run("bug50", "bugs", "score", 45, "선임 엔지니어", "한 판 45점", 40),
+    run("bug60", "bugs", "score", 60, "책임 엔지니어", "한 판 60점", 70),
+    run("bug75", "bugs", "score", 75, "수석 엔지니어", "한 판 75점", 100),
+    run("bug90", "bugs", "score", 90, "버그 헌터", "한 판 90점", 120),
+    run("bug110", "bugs", "score", 110, "버그 사냥꾼의 왕", "한 판 110점", 250),
+    run("bug130", "bugs", "score", 130, "제로 디펙트", "한 판 130점", 500),
+    run("bugC30", "bugs", "caught", 30, "30마리 방역", "한 판 30마리", 20),
+    run("bugC50", "bugs", "caught", 50, "50마리 방역", "한 판 50마리", 60),
+    run("bugC70", "bugs", "caught", 70, "70마리 방역", "한 판 70마리", 200),
+    cum("bug100", "bugs", "caught", 100, "방역 사원", "버그 누적 100마리", 20),
+    cum("bug500", "bugs", "caught", 500, "방역 반장", "버그 누적 500마리", 80),
+    cum("bug1000", "bugs", "caught", 1000, "방역 팀장", "버그 누적 1,000마리", 150),
+    cum("bug3000", "bugs", "caught", 3000, "방역 본부장", "버그 누적 3,000마리", 300),
+    cum("bug10000", "bugs", "caught", 10000, "버그 멸종", "버그 누적 10,000마리", 800),
+    cum("bugG10", "bugs", "plays", 10, "테스트 라인 견습", "버그 잡기 10판", 20),
+    cum("bugG100", "bugs", "plays", 100, "테스트 라인 반장", "버그 잡기 100판", 120),
+    // ----- 야구왕 -----
+    run("bbR1", "baseball", "runs", 1, "첫 득점", "한 판 1점", 10),
+    run("bbR3", "baseball", "runs", 3, "선취점", "한 판 3점", 20),
+    run("bbR5", "baseball", "runs", 5, "투수 교체", "한 판 5점", 40),
+    run("runs10", "baseball", "runs", 10, "빅이닝", "한 판 10점", 100),
+    run("bbR15", "baseball", "runs", 15, "마무리 붕괴", "한 판 15점", 150),
+    run("ace", "baseball", "runs", 20, "괴물 사냥", "한 판 20점 (괴물 투수 등판)", 200),
+    run("bbR30", "baseball", "runs", 30, "괴물도 무너졌다", "한 판 30점", 500),
+    run("bbH3", "baseball", "hits", 3, "멀티 히트", "한 판 안타 3개", 10),
+    run("bbH6", "baseball", "hits", 6, "타선 폭발", "한 판 안타 6개", 40),
+    run("bbH10", "baseball", "hits", 10, "두 자릿수 안타", "한 판 안타 10개", 120),
+    run("hr", "baseball", "hr", 1, "첫 홈런", "한 판 홈런 1개", 20),
+    run("bbHR2", "baseball", "hr", 2, "멀티 홈런", "한 판 홈런 2개", 60),
+    run("bbHR4", "baseball", "hr", 4, "홈런 더비", "한 판 홈런 4개", 200),
+    { id: "b2b", g: "baseball", label: "백투백", desc: "두 타자 연속 홈런", r: 60, ok: (g, s) => g === "baseball" && s.b2b },
+    run("steal", "baseball", "steals", 1, "대도", "도루 성공", 20),
+    run("bbS3", "baseball", "steals", 3, "발야구", "한 판 도루 3개", 80),
+    cum("bbS20", "baseball", "steals", 20, "도루왕", "누적 도루 20개", 150),
+    cum("bbHRc10", "baseball", "hr", 10, "홈런 10개", "누적 홈런 10개", 60),
+    cum("bbHRc50", "baseball", "hr", 50, "홈런왕", "누적 홈런 50개", 250),
+    cum("bbRc100", "baseball", "runs", 100, "100득점", "누적 100점", 80),
+    cum("bbRc500", "baseball", "runs", 500, "500득점", "누적 500점", 300),
+    cum("bbG10", "baseball", "plays", 10, "클린룸 리그 데뷔", "야구왕 10판", 20),
+    cum("bbG100", "baseball", "plays", 100, "클린룸 리그 레전드", "야구왕 100판", 150),
+    // ----- ZERO RUN -----
+    run("zr25", "zero", "bytes", 25, "첫 바이트", "한 판 25B", 10),
+    run("zr50", "zero", "bytes", 50, "50B 통과", "한 판 50B", 20),
+    run("zr100", "zero", "bytes", 100, "100B 통과", "한 판 100B", 40),
+    run("zr150", "zero", "bytes", 150, "캐시 적중", "한 판 150B", 80),
+    run("zr200", "zero", "bytes", 200, "오버클럭 돌파", "한 판 200B", 120),
+    run("zr250", "zero", "bytes", 250, "커널 패닉 생존", "한 판 250B", 150),
+    run("zr300", "zero", "bytes", 300, "패닉 속 질주", "한 판 300B", 250),
+    run("zr400", "zero", "bytes", 400, "메모리 누수 정복", "한 판 400B", 400),
+    run("zr512", "zero", "bytes", 512, "반 킬로바이트", "한 판 512B", 700),
+    cum("zrB1k", "zero", "bytes", 1024, "누적 1KB", "누적 1,024B", 40),
+    cum("zrB5k", "zero", "bytes", 5120, "누적 5KB", "누적 5,120B", 150),
+    cum("zrB20k", "zero", "bytes", 20480, "누적 20KB", "누적 20,480B", 400),
+    cum("zrG10", "zero", "plays", 10, "회로 탐험가", "ZERO RUN 10판", 20),
+    cum("zrG50", "zero", "plays", 50, "회로 개척자", "ZERO RUN 50판", 80),
+    cum("zrG200", "zero", "plays", 200, "끝없는 0", "ZERO RUN 200판", 250),
+    // ----- 99 -----
+    run("nn1", "nn", "win", 1, "레지스터 장악", "99 첫 승", 20),
+    run("nn2", "nn", "streak", 2, "손에 불이 붙었다", "99 2연승", 40),
+    run("nn3", "nn", "streak", 3, "오버클럭", "99 3연승", 80),
+    run("nn5", "nn", "streak", 5, "CPU 과열", "99 5연승", 200),
+    run("nn7", "nn", "streak", 7, "멈출 수 없다", "99 7연승", 400),
+    run("nn10", "nn", "streak", 10, "CPU 정복자", "99 10연승", 800),
+    cum("nnW10", "nn", "win", 10, "10승", "99 누적 10승", 60),
+    cum("nnW50", "nn", "win", 50, "50승", "99 누적 50승", 200),
+    cum("nnW100", "nn", "win", 100, "100승", "99 누적 100승", 400),
+    cum("nnG10", "nn", "plays", 10, "연산 유닛 견습", "99 10판", 20),
+    cum("nnG100", "nn", "plays", 100, "연산 유닛 반장", "99 100판", 150),
   ];
 
   // ---------- 직급: 누적 웨이퍼로 승진한다 ----------
@@ -125,9 +236,19 @@
     S.att.last = d; S.att.days++;
     const r = ATT_REWARD[(S.att.streak - 1) % 7];
     S.wafers += r; S.earned += r;
-    attToday = { streak: S.att.streak, r };
+    attToday = { streak: S.att.streak, r, out: { earned: 0, lines: [] } };
+    sweep("", {}, attToday.out);
     save();
     return attToday;
+  }
+
+  // 업적 훑기: 새로 열린 업적은 웨이퍼를 주고 쪽지 줄에 적는다 (웨이퍼로 열리는 업적이 또 열릴 수 있어 두 번 훑는다)
+  function sweep(g, s, out) {
+    for (let pass = 0; pass < 2; pass++) for (const a of ACH) {
+      if (S.ach[a.id]) continue;
+      let ok = false; try { ok = a.ok(g, s || {}); } catch (e) {}
+      if (ok) { S.ach[a.id] = today(); S.wafers += a.r; S.earned += a.r; out.earned += a.r; out.lines.push(["업적", a.label, a.r]); }
+    }
   }
 
   // ---------- 판 결과 보고 ----------
@@ -147,16 +268,12 @@
       const def = missionDef(m.id); if (!def || m.done || def.g !== g) continue;
       const v = def.k === "plays" ? 1 : def.k === "wins" ? (s.win ? 1 : 0) : (+s[def.k] || 0);
       m.v = def.mode === "max" ? Math.max(m.v, v) : m.v + v;
-      if (m.v >= def.t) { m.done = true; out.earned += def.r; out.lines.push(["오늘의 공정 완료", def.label, def.r]); }
+      if (m.v >= def.t) { m.done = true; S.misDone = (S.misDone || 0) + 1; out.earned += def.r; out.lines.push(["오늘의 공정 완료", def.label, def.r]); }
     }
-    if (!S.bonus && S.mis.length && S.mis.every(m => m.done)) { S.bonus = true; out.earned += ALL_DONE_BONUS; out.lines.push(["오늘의 공정 전부 완료", "보너스", ALL_DONE_BONUS]); }
+    if (!S.bonus && S.mis.length && S.mis.every(m => m.done)) { S.bonus = true; S.fullDays = (S.fullDays || 0) + 1; out.earned += ALL_DONE_BONUS; out.lines.push(["오늘의 공정 전부 완료", "보너스", ALL_DONE_BONUS]); }
     S.wafers += out.earned; S.earned += out.earned;
     // 업적 (웨이퍼가 들어온 뒤에 따져야 '웨이퍼 부자'가 바로 열린다)
-    for (const a of ACH) {
-      if (S.ach[a.id]) continue;
-      let ok = false; try { ok = a.ok(g, s); } catch (e) {}
-      if (ok) { S.ach[a.id] = today(); S.wafers += a.r; S.earned += a.r; out.earned += a.r; out.lines.push(["업적", a.label, a.r]); }
-    }
+    sweep(g, s, out);
     // 이번 판에 쓴 코팅은 한 판씩 닳는다
     for (const k in S.equip) {
       const id = S.equip[k]; if (!id || !k.startsWith(g + ".") || S.owned.includes(id)) continue;
@@ -197,10 +314,11 @@
     if (!toastEl) { toastEl = document.createElement("div"); toastEl.className = "fab-toast"; toastEl.setAttribute("role", "status"); document.body.appendChild(toastEl); }
     const esc = t => String(t).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
     toastEl.innerHTML = `<div class="big"><i class="fab-coin"></i>${esc(title || `웨이퍼 +${o.earned}`)}</div>` +
-      o.lines.map(([a, b, r]) => `<div class="row"><span><b>${esc(a)}</b> ${esc(b)}</span><span>${r ? "+" + r : ""}</span></div>`).join("") +
+      o.lines.slice(0, 6).map(([a, b, r]) => `<div class="row"><span><b>${esc(a)}</b> ${esc(b)}</span><span>${r ? "+" + r : ""}</span></div>`).join("") +
+      (o.lines.length > 6 ? `<div class="row"><span>그 밖에 ${o.lines.length - 6}개</span><span>+${o.lines.slice(6).reduce((t, l) => t + (l[2] || 0), 0)}</span></div>` : "") +
       `<div class="row" style="opacity:.7"><span>보유 웨이퍼</span><span>${S.wafers.toLocaleString("ko-KR")}장</span></div>`;
     void toastEl.offsetWidth; toastEl.classList.add("on");
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("on"), 3600 + o.lines.length * 600);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove("on"), 3600 + Math.min(o.lines.length, 7) * 600);
   }
 
   // ---------- 상점 ----------
@@ -211,10 +329,13 @@
     const [price, , need] = kind === "p" ? [it.p[0], 0, it.p[1]] : it.c;
     if (kind === "p" && S.owned.includes(id)) return false;
     if (rank() < need || S.wafers < price) return false;
-    S.wafers -= price;
+    S.wafers -= price; S.buys = (S.buys || 0) + 1;
     if (kind === "p") S.owned.push(id); else S.uses[id] = (S.uses[id] || 0) + it.c[1];
-    S.equip[it.g + "." + it.slot] = id; save(); return true;
+    S.equip[it.g + "." + it.slot] = id;
+    const o = { earned: 0, lines: [] }; sweep("", {}, o); lastBuy = o;
+    save(); return true;
   }
+  let lastBuy = null;
   const has = id => S.owned.includes(id) || (S.uses[id] || 0) > 0;
   function equip(id) {
     const it = SHOP.find(i => i.id === id); if (!it || !has(id)) return;
@@ -227,13 +348,13 @@
   // 페이지를 열면 출근 도장: 오늘 처음이면 웨이퍼를 주고 쪽지를 띄운다
   function stamp() {
     const a = checkIn();
-    if (a) toast({ earned: a.r, lines: [] }, `출근 도장 ${a.streak}일째 · 웨이퍼 +${a.r}`);
+    if (a) toast({ earned: a.r, lines: a.out.lines }, `출근 도장 ${a.streak}일째 · 웨이퍼 +${a.r}`);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", stamp); else setTimeout(stamp, 0);
   window.FAB = {
     S, GAMES, MISSIONS, ACH, SHOP, RANKS, ALL_DONE_BONUS,
     report, checkIn, buy, equip, equipped, has, rank, rankOf, rollDay, toast, save,
-    missionDef, get attToday() { return attToday; },
+    missionDef, get attToday() { return attToday; }, get lastBuy() { return lastBuy; },
     reload() { Object.assign(S, load()); S.uses = S.uses || {}; rollDay(); },
   };
 })();
