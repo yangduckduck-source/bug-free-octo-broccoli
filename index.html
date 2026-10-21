@@ -96,7 +96,7 @@
   .recs span { color: var(--sub); font-size: 13px; }
   @media (prefers-reduced-motion: reduce) { a.tile { transition: none; } }
 </style>
-<script src="common/fab.js?v=7"></script>
+<script src="common/fab.js?v=8"></script>
 </head>
 <body>
 <main>
@@ -112,24 +112,6 @@
   </div>
 
   <div class="grid">
-    <a class="tile" href="bugs/">
-      <div class="art" style="background:#081812">
-        <svg viewBox="0 0 320 180" width="100%" height="100%" aria-hidden="true">
-          <rect width="320" height="180" fill="#081812"/>
-          <g fill="#b8923f"><ellipse cx="90" cy="120" rx="44" ry="17"/><ellipse cx="230" cy="120" rx="44" ry="17"/></g>
-          <g fill="#020604"><ellipse cx="90" cy="120" rx="36" ry="13"/><ellipse cx="230" cy="120" rx="36" ry="13"/></g>
-          <g transform="translate(90 96)"><circle cx="0" cy="-20" r="12" fill="#151515"/><ellipse cx="0" cy="4" rx="22" ry="20" fill="#e8303b"/><line x1="0" y1="-14" x2="0" y2="24" stroke="#151515" stroke-width="2"/><g fill="#151515"><circle cx="-10" cy="-1" r="4.5"/><circle cx="10" cy="-1" r="4.5"/><circle cx="-11" cy="13" r="3.8"/><circle cx="11" cy="13" r="3.8"/></g><circle cx="-5" cy="-22" r="3.6" fill="#fff"/><circle cx="5" cy="-22" r="3.6" fill="#fff"/></g>
-          <ellipse cx="230" cy="96" rx="15" ry="22" fill="none" stroke="#5dffc3" stroke-width="6"/>
-          <text x="160" y="50" font-family="Black Han Sans, sans-serif" font-size="28" fill="#ffd84a" text-anchor="middle">톡!</text>
-        </svg>
-      </div>
-      <div class="info">
-        <h2>버그 잡기</h2>
-        <p>30초 두더지 잡기</p>
-        <span class="go">하러 가기 →</span>
-      </div>
-    </a>
-
     <a class="tile" href="hbm/">
       <div class="art" style="background:#040b09">
         <svg viewBox="0 0 640 180" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
@@ -221,6 +203,64 @@
         <span class="go">하러 가기 →</span>
       </div>
     </a>
+    <a class="tile" href="pinball/">
+      <div class="art" style="background:#0b1f17">
+        <svg viewBox="0 0 320 180" width="100%" height="100%" aria-hidden="true">
+          <rect width="320" height="180" fill="#0b1f17"/>
+          <path d="M40 180 V70 Q40 18 160 18 Q280 18 280 70 V180" fill="none" stroke="#e3b04a" stroke-width="4"/>
+          <g fill="#14302a" stroke="#5dffc3" stroke-width="3"><circle cx="122" cy="72" r="17"/><circle cx="198" cy="72" r="17"/><circle cx="160" cy="108" r="17"/></g>
+          <g fill="#cfd8dc"><circle cx="122" cy="72" r="7"/><circle cx="198" cy="72" r="7"/><circle cx="160" cy="108" r="7"/></g>
+          <path d="M92 158 L138 172" stroke="#5dffc3" stroke-width="9" stroke-linecap="round"/><path d="M228 158 L182 172" stroke="#5dffc3" stroke-width="9" stroke-linecap="round"/>
+          <circle cx="232" cy="118" r="8" fill="#e6fff4"/><circle cx="232" cy="118" r="16" fill="#5dffc3" opacity=".3"/>
+          <path d="M232 118 L260 140" stroke="#5dffc3" stroke-width="4" opacity=".35" stroke-linecap="round"/>
+          <text x="160" y="46" font-family="Black Han Sans, sans-serif" font-size="18" fill="#ffcf3a" text-anchor="middle" letter-spacing="6">WAFER</text>
+        </svg>
+      </div>
+      <div class="info">
+        <h2>웨이퍼 핀볼</h2>
+        <p>회로 기판 핀볼</p>
+        <span class="go">하러 가기 →</span>
+      </div>
+    </a>
+
+    <a class="tile" href="bond/">
+      <div class="art" style="background:#06120e">
+        <svg viewBox="0 0 320 180" width="100%" height="100%" aria-hidden="true">
+          <rect width="320" height="180" fill="#06120e"/>
+          <circle cx="160" cy="92" r="82" fill="#0b1d17" stroke="#4a5a55" stroke-width="6"/>
+          <rect x="122" y="60" width="76" height="64" rx="4" fill="#2a2f5a" stroke="#8fa0d0"/>
+          <g fill="#cfd8dc"><rect x="128" y="66" width="8" height="6"/><rect x="144" y="66" width="8" height="6"/><rect x="160" y="66" width="8" height="6"/><rect x="176" y="66" width="8" height="6"/></g>
+          <g fill="none" stroke="#ffcf3a" stroke-width="2.4"><path d="M132 68 Q128 36 108 28"/><path d="M148 68 Q148 34 140 22"/><path d="M164 68 Q170 36 182 22"/></g>
+          <g fill="#c8961e"><rect x="100" y="20" width="14" height="8"/><rect x="134" y="14" width="12" height="8"/><rect x="176" y="14" width="12" height="8"/><rect x="206" y="20" width="14" height="8"/></g>
+          <path d="M185 30 L185 62" stroke="#e8eef5" stroke-width="6" stroke-linecap="round"/><circle cx="185" cy="66" r="3.5" fill="#ffcf3a"/>
+          <text x="248" y="58" font-family="Black Han Sans, sans-serif" font-size="24" fill="#5dffc3">딱!</text>
+        </svg>
+      </div>
+      <div class="info">
+        <h2>와이어 본딩</h2>
+        <p>원버튼 금선 잇기</p>
+        <span class="go">하러 가기 →</span>
+      </div>
+    </a>
+
+    <a class="tile" href="rail/">
+      <div class="art" style="background:#0a1813">
+        <svg viewBox="0 0 320 180" width="100%" height="100%" aria-hidden="true">
+          <rect width="320" height="180" fill="#0a1813"/>
+          <g fill="none" stroke="#cfd8dc" stroke-width="4"><path d="M160 10 V48 Q160 62 120 92 Q86 118 86 150"/><path d="M160 48 Q160 62 200 92 Q234 118 234 150"/></g>
+          <path d="M160 48 Q160 62 200 92" fill="none" stroke="#5dffc3" stroke-width="4" opacity=".8"/>
+          <circle cx="160" cy="52" r="11" fill="#111c19" stroke="#5dffc3" stroke-width="2.5"/><path d="M166 56 L156 48 L158 54 Z" fill="#e6fff4"/>
+          <g transform="translate(196 78) rotate(35)"><rect x="-11" y="-11" width="22" height="22" rx="5" fill="#eef3f8"/><rect x="-11" y="-11" width="22" height="7" rx="3" fill="#ffd23a"/></g>
+          <rect x="56" y="150" width="60" height="26" rx="5" fill="#14231f" stroke="#ffd23a" stroke-width="2"/><rect x="204" y="150" width="60" height="26" rx="5" fill="#14231f" stroke="#4a8cff" stroke-width="2"/>
+          <text x="86" y="169" font-family="Black Han Sans, sans-serif" font-size="13" fill="#ffd23a" text-anchor="middle">노광</text><text x="234" y="169" font-family="Black Han Sans, sans-serif" font-size="13" fill="#4a8cff" text-anchor="middle">증착</text>
+        </svg>
+      </div>
+      <div class="info">
+        <h2>팹 물류</h2>
+        <p>천장 레일 관제</p>
+        <span class="go">하러 가기 →</span>
+      </div>
+    </a>
   </div>
 
   <footer>© 2026 yangduckduck-source · 플레이·공유 자유, 코드 재사용 금지 (<a href="https://github.com/yangduckduck-source/bug-free-octo-broccoli/blob/main/LICENSE">LICENSE</a>)</footer>
@@ -277,7 +317,7 @@
       } else if (cur === "ach") {
         const B = S.best, got = FAB.ACH.filter(a => S.ach[a.id]).length;
         const rec = [
-          ["칩 쌓기", (B.chip || {}).layers, "단"], ["버그 잡기", (B.bugs || {}).score, "점"], ["야구왕", (B.baseball || {}).runs, "점"],
+          ["칩 쌓기", (B.chip || {}).layers, "단"], ["야구왕", (B.baseball || {}).runs, "점"], ["웨이퍼 핀볼", (B.pin || {}).score, "점"], ["와이어 본딩", (B.bond || {}).chips, "칩"], ["팹 물류", (B.rail || {}).score, "점"],
           ["ZERO RUN", (B.zero || {}).bytes, "B"], ["99 연승", (B.nn || {}).streak, "연승"], ["누적 웨이퍼", S.earned, "장"],
         ];
         const R = FAB.rank(), nx = FAB.RANKS[R + 1];

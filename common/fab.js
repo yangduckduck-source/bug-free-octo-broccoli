@@ -23,17 +23,33 @@
   S.uses = S.uses || {};
   // 야구왕 홈런 득점 버그로 부풀려진 명예의 전당 기록을 한 번만 지운다
   if (!S.bbReset) { if (S.best) delete S.best.baseball; S.bbReset = 1; }
+  // 버그 잡기가 문을 닫았다: 산 꾸미기는 산 값 그대로 웨이퍼로 돌려준다
+  const BUG_PRICE = { bug_bolt: [300, 5000], bug_fire: [500, 8000], bug_hammer: [300, 4500], bug_iron: [400, 6000], bug_vac: [500, 7500], bug_night: [450, 7000] };
+  if (!S.bugsGone) {
+    let back = 0;
+    for (const id in BUG_PRICE) {
+      if ((S.owned || []).includes(id)) back += BUG_PRICE[id][1];
+      else if ((S.uses || {})[id] > 0) back += BUG_PRICE[id][0];
+      S.owned = (S.owned || []).filter(x => x !== id); delete S.uses[id];
+    }
+    for (const k in S.equip || {}) if (k.startsWith("bugs.")) delete S.equip[k];
+    if (S.best) delete S.best.bugs;
+    if (back) { S.wafers += back; S.notice = { earned: back, lines: [["환불", "버그 잡기 꾸미기", back]], title: `버그 잡기 종료 · 꾸미기 환불 +${back}` }; }
+    S.bugsGone = 1;
+  }
 
-  const GAMES = { chip: "칩 쌓기", bugs: "버그 잡기", baseball: "야구왕", zero: "ZERO RUN", nn: "99" };
+  const GAMES = { chip: "칩 쌓기", baseball: "야구왕", zero: "ZERO RUN", nn: "99", pin: "웨이퍼 핀볼", bond: "와이어 본딩", rail: "팹 물류" };
 
   // ---------- 웨이퍼 정산: 한 판 기록 → 웨이퍼 ----------
   const EARN = {
     // 게임마다 '보통 한 판'이 2~3장, 아주 잘한 판이 6~8장이 되도록 난이도에 맞춰 맞춘다 (한 판 최대 10장)
     chip: s => Math.floor((s.layers || 0) / 4),                                        // 12단 3장 · 20단 5장
-    bugs: s => Math.floor((s.score || 0) / 20),                                        // 60점 3장 · 90점 4장
     baseball: s => Math.floor((s.runs || 0) / 2) + Math.floor((s.hits || 0) / 4) + (s.hr || 0),   // 4점·안타 4·홈런 1 = 4장
     zero: s => 1 + Math.floor((s.bytes || 0) / 25),                                    // 50B 3장 · 150B 7장 (어려운 만큼 후하게)
     nn: s => (s.win ? 3 : 1),
+    pin: s => Math.floor((s.score || 0) / 12000),                                     // 3만 점 2장 · 6만 점 5장
+    bond: s => Math.floor((s.chips || 0) / 2) + Math.floor((s.bonds || 0) / 40),       // 칩 6개(본딩 70) 4장
+    rail: s => Math.floor((s.score || 0) / 10),                                        // 30점 3장 · 60점 6장
   };
 
   // ---------- 오늘의 공정: 날마다 서로 다른 게임에서 세 가지 ----------
@@ -41,8 +57,6 @@
   const MISSIONS = [
     { id: "chip12", g: "chip", k: "layers", t: 12, mode: "max", label: "칩 12단 쌓기", r: 30 },
     { id: "chipPerf", g: "chip", k: "perfect", t: 15, mode: "sum", label: "칩 쌓기에서 딱! 15번", r: 30 },
-    { id: "bug40", g: "bugs", k: "caught", t: 40, mode: "sum", label: "버그 40마리 잡기", r: 30 },
-    { id: "bug60", g: "bugs", k: "score", t: 60, mode: "max", label: "버그 잡기 한 판 60점", r: 35 },
     { id: "hit5", g: "baseball", k: "hits", t: 5, mode: "sum", label: "야구왕 안타 5개", r: 30 },
     { id: "hr1", g: "baseball", k: "hr", t: 1, mode: "sum", label: "야구왕 홈런 1개", r: 35 },
     { id: "run6", g: "baseball", k: "runs", t: 6, mode: "max", label: "야구왕 한 판 6점", r: 40 },
@@ -50,12 +64,18 @@
     { id: "zr3", g: "zero", k: "plays", t: 3, mode: "sum", label: "ZERO RUN 3판", r: 25 },
     { id: "nn1", g: "nn", k: "wins", t: 1, mode: "sum", label: "99에서 1번 이기기", r: 30 },
     { id: "nn3", g: "nn", k: "plays", t: 3, mode: "sum", label: "99 3판", r: 25 },
+    { id: "pin20k", g: "pin", k: "score", t: 20000, mode: "max", label: "핀볼 한 판 20,000점", r: 35 },
+    { id: "pinBoss", g: "pin", k: "bossKills", t: 1, mode: "sum", label: "핀볼 불량 다이 1개 부수기", r: 35 },
+    { id: "bond3", g: "bond", k: "chips", t: 3, mode: "max", label: "와이어 본딩 한 판 칩 3개 점등", r: 30 },
+    { id: "bondPf", g: "bond", k: "perfect", t: 30, mode: "sum", label: "와이어 본딩 딱! 30번", r: 30 },
+    { id: "rail20", g: "rail", k: "score", t: 20, mode: "max", label: "팹 물류 한 판 20점", r: 35 },
+    { id: "rail50", g: "rail", k: "delivered", t: 50, mode: "sum", label: "팹 물류 웨이퍼 통 50개 배송", r: 30 },
   ];
   const ALL_DONE_BONUS = 60;
   function seeded(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; }; }
   function rollDay() {
     const d = today();
-    if (S.day === d && S.mis.length) return;
+    if (S.day === d && S.mis.length && S.mis.every(m => missionDef(m.id))) return;
     const rnd = seeded("fab" + d), pool = MISSIONS.slice(), pick = [], used = new Set();
     while (pick.length < 3 && pool.length) {
       const m = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
@@ -75,7 +95,7 @@
   const ACH = [
     // ----- 공장 전체 -----
     { id: "first", g: "all", label: "첫 출근", desc: "아무 게임이나 한 판", r: 10, ok: () => true },
-    { id: "all5", g: "all", label: "전 라인 순회", desc: "다섯 게임을 모두 한 판씩", r: 40, ok: () => Object.keys(GAMES).every(g => T(g, "plays")) },
+    { id: "all5", g: "all", label: "전 라인 순회", desc: "모든 게임을 한 판씩", r: 40, ok: () => Object.keys(GAMES).every(g => T(g, "plays")) },
     { id: "p100", g: "all", label: "가동률 100판", desc: "모든 게임 합쳐 100판", r: 60, ok: () => plays() >= 100 },
     { id: "p500", g: "all", label: "24시간 가동", desc: "모든 게임 합쳐 500판", r: 200, ok: () => plays() >= 500 },
     { id: "p1000", g: "all", label: "무중단 라인", desc: "모든 게임 합쳐 1,000판", r: 400, ok: () => plays() >= 1000 },
@@ -129,25 +149,6 @@
     cum("chipP1000", "chip", "perfect", 1000, "딱! 1,000번", "누적 딱! 1,000번", 300),
     cum("chipG10", "chip", "plays", 10, "패키징 라인 견습", "칩 쌓기 10판", 20),
     cum("chipG100", "chip", "plays", 100, "패키징 라인 반장", "칩 쌓기 100판", 120),
-    // ----- 버그 잡기 -----
-    run("bug20", "bugs", "score", 20, "첫 디버깅", "한 판 20점", 10),
-    run("bug30", "bugs", "score", 30, "주니어 엔지니어", "한 판 30점", 20),
-    run("bug50", "bugs", "score", 45, "선임 엔지니어", "한 판 45점", 40),
-    run("bug60", "bugs", "score", 60, "책임 엔지니어", "한 판 60점", 70),
-    run("bug75", "bugs", "score", 75, "수석 엔지니어", "한 판 75점", 100),
-    run("bug90", "bugs", "score", 90, "버그 헌터", "한 판 90점", 120),
-    run("bug110", "bugs", "score", 110, "버그 사냥꾼의 왕", "한 판 110점", 250),
-    run("bug130", "bugs", "score", 130, "제로 디펙트", "한 판 130점", 500),
-    run("bugC30", "bugs", "caught", 30, "30마리 방역", "한 판 30마리", 20),
-    run("bugC50", "bugs", "caught", 50, "50마리 방역", "한 판 50마리", 60),
-    run("bugC70", "bugs", "caught", 70, "70마리 방역", "한 판 70마리", 200),
-    cum("bug100", "bugs", "caught", 100, "방역 사원", "버그 누적 100마리", 20),
-    cum("bug500", "bugs", "caught", 500, "방역 반장", "버그 누적 500마리", 80),
-    cum("bug1000", "bugs", "caught", 1000, "방역 팀장", "버그 누적 1,000마리", 150),
-    cum("bug3000", "bugs", "caught", 3000, "방역 본부장", "버그 누적 3,000마리", 300),
-    cum("bug10000", "bugs", "caught", 10000, "버그 멸종", "버그 누적 10,000마리", 800),
-    cum("bugG10", "bugs", "plays", 10, "테스트 라인 견습", "버그 잡기 10판", 20),
-    cum("bugG100", "bugs", "plays", 100, "테스트 라인 반장", "버그 잡기 100판", 120),
     // ----- 야구왕 -----
     run("bbR1", "baseball", "runs", 1, "첫 득점", "한 판 1점", 10),
     run("bbR3", "baseball", "runs", 3, "선취점", "한 판 3점", 20),
@@ -200,6 +201,56 @@
     cum("nnW100", "nn", "win", 100, "100승", "99 누적 100승", 400),
     cum("nnG10", "nn", "plays", 10, "연산 유닛 견습", "99 10판", 20),
     cum("nnG100", "nn", "plays", 100, "연산 유닛 반장", "99 100판", 150),
+    // ----- 웨이퍼 핀볼 -----
+    run("pin5k", "pin", "score", 5000, "첫 전원 인가", "한 판 5,000점", 10),
+    run("pin20k", "pin", "score", 20000, "회로 활성화", "한 판 20,000점", 30),
+    run("pin50k", "pin", "score", 50000, "고전압 구간", "한 판 50,000점", 80),
+    run("pin100k", "pin", "score", 100000, "10만 볼트", "한 판 100,000점", 200),
+    run("pin200k", "pin", "score", 200000, "기판이 녹는다", "한 판 200,000점", 500),
+    run("pinClk2", "pin", "clock", 2, "클럭 업", "WAFER 다섯 글자 켜기", 20),
+    run("pinClk3", "pin", "clock", 3, "오버클럭", "한 판 배율 ×3", 60),
+    run("pinClk5", "pin", "clock", 5, "최대 클럭", "한 판 배율 ×5", 250),
+    run("pinBoss1", "pin", "bossKills", 1, "불량 제거", "불량 다이 부수기", 40),
+    run("pinBoss3", "pin", "bossKills", 3, "불량률 제로", "한 판 불량 다이 3개", 200),
+    run("pinJack3", "pin", "jackpots", 3, "비아 홀 단골", "한 판 비아 홀 잭팟 3번", 60),
+    cum("pinBossC10", "pin", "bossKills", 10, "결함 사냥꾼", "누적 불량 다이 10개", 150),
+    cum("pinS1m", "pin", "score", 1000000, "누적 100만 점", "핀볼 누적 1,000,000점", 120),
+    cum("pinS5m", "pin", "score", 5000000, "누적 500만 점", "핀볼 누적 5,000,000점", 400),
+    cum("pinG10", "pin", "plays", 10, "테스트 보드 견습", "핀볼 10판", 20),
+    cum("pinG100", "pin", "plays", 100, "테스트 보드 반장", "핀볼 100판", 150),
+    // ----- 와이어 본딩 -----
+    run("bondC1", "bond", "chips", 1, "첫 점등", "칩 1개 점등", 10),
+    run("bondC3", "bond", "chips", 3, "오디오 칩 완성", "한 판 칩 3개", 30),
+    run("bondC5", "bond", "chips", 5, "이미지 센서 완성", "한 판 칩 5개", 60),
+    run("bondC8", "bond", "chips", 8, "AP 완성", "한 판 칩 8개", 150),
+    run("bondC10", "bond", "chips", 10, "HBM 컨트롤러 완성", "한 판 칩 10개", 300),
+    run("bondC13", "bond", "chips", 13, "꿈의 칩", "한 판 칩 13개", 700),
+    run("bondK5", "bond", "maxCombo", 5, "손이 기억한다", "딱! 5연속", 20),
+    run("bondK10", "bond", "maxCombo", 10, "금선 장인", "딱! 10연속", 60),
+    run("bondK20", "bond", "maxCombo", 20, "현미경 속 명인", "딱! 20연속", 200),
+    run("bondK40", "bond", "maxCombo", 40, "신의 손", "딱! 40연속", 500),
+    run("bondB50", "bond", "bonds", 50, "본딩 50가닥", "한 판 본딩 50번", 60),
+    cum("bondBc500", "bond", "bonds", 500, "금선 500가닥", "누적 본딩 500번", 80),
+    cum("bondBc3000", "bond", "bonds", 3000, "금선 3,000가닥", "누적 본딩 3,000번", 300),
+    cum("bondCc50", "bond", "chips", 50, "칩 50개 점등", "누적 칩 50개", 150),
+    cum("bondG10", "bond", "plays", 10, "본딩 라인 견습", "와이어 본딩 10판", 20),
+    cum("bondG100", "bond", "plays", 100, "본딩 라인 반장", "와이어 본딩 100판", 150),
+    // ----- 팹 물류 -----
+    run("rail5", "rail", "score", 5, "첫 배송", "한 판 5점", 10),
+    run("rail20", "rail", "score", 20, "세정 장비 반입", "한 판 20점", 30),
+    run("rail50", "rail", "score", 50, "계측 장비 반입", "한 판 50점", 80),
+    run("rail80", "rail", "score", 80, "무정지 라인", "한 판 80점", 200),
+    run("rail120", "rail", "score", 120, "물류의 신", "한 판 120점", 500),
+    run("railK5", "rail", "maxCombo", 5, "정시 배송", "연속 5개 배송", 20),
+    run("railK10", "rail", "maxCombo", 10, "무오배송", "연속 10개 배송", 60),
+    run("railK25", "rail", "maxCombo", 25, "완벽한 관제", "연속 25개 배송", 200),
+    run("railK50", "rail", "maxCombo", 50, "AMHS 그 자체", "연속 50개 배송", 500),
+    run("railClean", "rail", "clean", 1, "경보 없는 하루", "한 판 20점까지 오배송 0", 100),
+    cum("railD100", "rail", "delivered", 100, "통 100개", "누적 배송 100개", 40),
+    cum("railD1000", "rail", "delivered", 1000, "통 1,000개", "누적 배송 1,000개", 200),
+    cum("railD5000", "rail", "delivered", 5000, "통 5,000개", "누적 배송 5,000개", 500),
+    cum("railG10", "rail", "plays", 10, "관제실 견습", "팹 물류 10판", 20),
+    cum("railG100", "rail", "plays", 100, "관제실 반장", "팹 물류 100판", 150),
   ];
 
   // ---------- 직급: 누적 웨이퍼로 승진한다 ----------
@@ -212,7 +263,7 @@
   // ---------- 상점: 겉모습만 바꾸는 꾸미기 ----------
   // 코팅(소모형): uses판 동안만 쓰고 닳는다 · 소장판(영구형): 비싸고 높은 직급에서 열린다
   // c: [코팅 가격, 판 수, 필요 직급], p: [소장 가격, 필요 직급]
-  const SLOTS = { skin: "재질", ball: "공", fx: "손맛", glow: "빛", hat: "모자", trail: "꼬리", pat: "무늬", land: "착지", head: "머리", hand: "손", bat: "배트", tool: "도구", bg: "조명", back: "뒷면" };
+  const SLOTS = { skin: "재질", ball: "공", fx: "효과", glow: "빛", hat: "모자", trail: "꼬리", pat: "무늬", land: "착지", head: "머리", hand: "손", bat: "배트", back: "뒷면", flip: "플리퍼", table: "판", wire: "와이어", lens: "렌즈", foup: "통", rail: "레일" };
   const SHOP = [
     { id: "chip_neon", g: "chip", slot: "skin", name: "네온 핑크 칩", c: [250, 20, 0], p: [4000, 3], col: "#ff6fb5" },
     { id: "chip_gold", g: "chip", slot: "skin", name: "금 도금 칩", c: [400, 20, 2], p: [6000, 4], col: "#ffcf3a" },
@@ -220,8 +271,6 @@
     { id: "bb_sky", g: "baseball", slot: "ball", name: "하늘 전자 공", c: [250, 15, 0], p: [4000, 3], col: "#3bd1ff" },
     { id: "bb_pink", g: "baseball", slot: "ball", name: "핑크 전자 공", c: [250, 15, 1], p: [4000, 3], col: "#ff6fb5" },
     { id: "bb_gold", g: "baseball", slot: "ball", name: "금빛 전자 공", c: [400, 15, 2], p: [6000, 4], col: "#ffcf3a" },
-    { id: "bug_bolt", g: "bugs", slot: "fx", name: "번개 손맛", c: [300, 20, 1], p: [5000, 3], col: "#ffe14a" },
-    { id: "bug_fire", g: "bugs", slot: "fx", name: "폭죽 손맛", c: [500, 20, 2], p: [8000, 4], col: "linear-gradient(90deg,#ff5a6a,#ffcf3a,#5dffc3,#3bd1ff)" },
     { id: "zr_sky", g: "zero", slot: "glow", name: "하늘빛 0", c: [250, 20, 0], p: [4000, 3], col: "#3bd1ff" },
     { id: "zr_pink", g: "zero", slot: "glow", name: "핑크빛 0", c: [250, 20, 1], p: [4000, 3], col: "#ff6fb5" },
     { id: "zr_gold", g: "zero", slot: "glow", name: "금빛 0", c: [400, 20, 2], p: [6000, 4], col: "#ffcf3a" },
@@ -248,11 +297,24 @@
     { id: "bb_wbat", g: "baseball", slot: "bat", name: "웨이퍼 배트", c: [500, 15, 2], p: [8000, 4], col: "conic-gradient(#7f8fb5,#c7b4e6,#9fe0e8,#c9e7a8,#e8c79f,#7f8fb5)" },
     { id: "bb_laser", g: "baseball", slot: "bat", name: "레이저 배트", c: [700, 15, 4], p: [11000, 5], col: "linear-gradient(90deg,#1d3b52,#7ff6ff,#e6ffff)" },
     { id: "bb_fire", g: "baseball", slot: "trail", name: "홈런 불꽃 꼬리", c: [600, 15, 3], p: [9000, 5], col: "linear-gradient(90deg,#ff4620,#ffd25a)" },
-    // 버그 잡기 · 도구 · 조명
-    { id: "bug_hammer", g: "bugs", slot: "tool", name: "뿅망치", c: [300, 20, 0], p: [4500, 3], col: "linear-gradient(90deg,#ff4a5a 60%,#ffe14a 60%)" },
-    { id: "bug_iron", g: "bugs", slot: "tool", name: "납땜 인두", c: [400, 20, 1], p: [6000, 4], col: "linear-gradient(90deg,#2a2f3f,#c9d3df 60%,#ff7a2a)" },
-    { id: "bug_vac", g: "bugs", slot: "tool", name: "클린룸 진공 흡입기", c: [500, 20, 2], p: [7500, 4], col: "linear-gradient(90deg,#dfe8eb,#3bd1ff)" },
-    { id: "bug_night", g: "bugs", slot: "bg", name: "야간 클린룸 조명", c: [450, 20, 2], p: [7000, 4], col: "linear-gradient(180deg,#ffd65a,#0b1510)" },
+    // 웨이퍼 핀볼 · 공 · 플리퍼 · 판
+    { id: "pin_gold", g: "pin", slot: "ball", name: "금빛 전자 공", c: [300, 15, 0], p: [4500, 3], col: "#ffcf3a" },
+    { id: "pin_plasma", g: "pin", slot: "ball", name: "플라스마 공", c: [500, 15, 2], p: [7500, 4], col: "radial-gradient(circle,#fff 15%,#ff6fb5 45%,#7b3fff 85%)" },
+    { id: "pin_fneon", g: "pin", slot: "flip", name: "네온 핑크 플리퍼", c: [350, 15, 1], p: [5000, 3], col: "#ff6fb5" },
+    { id: "pin_fgold", g: "pin", slot: "flip", name: "금 도금 플리퍼", c: [500, 15, 2], p: [7000, 4], col: "linear-gradient(90deg,#c8961e,#fff2a8,#c8961e)" },
+    { id: "pin_night", g: "pin", slot: "table", name: "야간 리소 조명 판", c: [600, 15, 3], p: [9000, 5], col: "linear-gradient(180deg,#ffd65a,#2a1f4a)" },
+    // 와이어 본딩 · 와이어 · 효과 · 렌즈
+    { id: "bond_silver", g: "bond", slot: "wire", name: "은 와이어", c: [300, 15, 0], p: [4500, 3], col: "linear-gradient(90deg,#8fa0b5,#eef3fa,#8fa0b5)" },
+    { id: "bond_copper", g: "bond", slot: "wire", name: "구리 와이어", c: [350, 15, 1], p: [5000, 3], col: "linear-gradient(90deg,#8a4a24,#f0a070,#8a4a24)" },
+    { id: "bond_rainbow", g: "bond", slot: "wire", name: "무지개 와이어", c: [600, 15, 3], p: [9000, 5], col: "linear-gradient(90deg,#ff5a6a,#ffcf3a,#5dffc3,#3bd1ff,#b38cff)" },
+    { id: "bond_spark", g: "bond", slot: "fx", name: "딱! 불꽃놀이", c: [400, 15, 1], p: [6000, 4], col: "radial-gradient(circle,#fff 10%,#ffcf3a 35%,#ff5a6a 70%)" },
+    { id: "bond_lens", g: "bond", slot: "lens", name: "금테 현미경", c: [500, 15, 2], p: [7500, 4], col: "radial-gradient(circle,transparent 45%,#ffcf3a 50% 62%,transparent 66%)" },
+    // 팹 물류 · 통 · 레일 · 효과
+    { id: "rail_fgold", g: "rail", slot: "foup", name: "금빛 FOUP", c: [350, 15, 1], p: [5000, 3], col: "#ffcf3a" },
+    { id: "rail_fclear", g: "rail", slot: "foup", name: "투명 FOUP", c: [450, 15, 2], p: [6500, 4], col: "linear-gradient(135deg,rgba(200,240,255,.9),rgba(120,200,255,.4))" },
+    { id: "rail_rgold", g: "rail", slot: "rail", name: "금 레일", c: [400, 15, 1], p: [6000, 4], col: "linear-gradient(90deg,#c8961e,#fff2a8,#c8961e)" },
+    { id: "rail_rneon", g: "rail", slot: "rail", name: "네온 레일", c: [500, 15, 2], p: [7500, 4], col: "linear-gradient(90deg,#3bd1ff,#b38cff)" },
+    { id: "rail_party", g: "rail", slot: "fx", name: "배송 축포", c: [600, 15, 3], p: [9000, 5], col: "radial-gradient(circle,#ffcf3a 15%,#ff6fb5 40%,#3bd1ff 70%)" },
     // 99 · 카드 뒷면
     { id: "nn_wafer", g: "nn", slot: "back", name: "웨이퍼 뒷면", c: [300, 20, 0], p: [4500, 3], col: "conic-gradient(#7f8fb5,#c7b4e6,#9fe0e8,#c9e7a8,#e8c79f,#7f8fb5)" },
     { id: "nn_pcb", g: "nn", slot: "back", name: "회로 기판 뒷면", c: [400, 20, 1], p: [6000, 4], col: "linear-gradient(135deg,#0f5a3a 60%,#e3b04a 60%)" },
@@ -381,6 +443,7 @@
   // 페이지를 열면 출근 도장: 오늘 처음이면 웨이퍼를 주고 쪽지를 띄운다
   function stamp() {
     const a = checkIn();
+    if (S.notice) { const n = S.notice; delete S.notice; save(); if (!a) return toast(n, n.title); setTimeout(() => toast(n, n.title), 4200); }
     if (a) toast({ earned: a.r, lines: a.out.lines }, `출근 도장 ${a.streak}일째 · 웨이퍼 +${a.r}`);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", stamp); else setTimeout(stamp, 0);
