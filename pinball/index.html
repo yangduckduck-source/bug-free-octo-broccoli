@@ -34,6 +34,7 @@
 <body>
 <canvas id="c" aria-label="웨이퍼 핀볼 게임 화면. 화면 왼쪽과 오른쪽을 눌러 플리퍼를 움직이고, 길게 눌렀다 놓아 공을 발사한다."></canvas>
 <button id="snd" type="button">소리 켬</button>
+<script src="../common/fab.js?v=8"></script>
 <script>
 (() => {
   "use strict";
@@ -65,6 +66,13 @@
   const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const FONT = { kr: css("--kr"), num: css("--num") };
   const MINT = "#5dffc3", GOLD = "#ffcf3a", AMBER = "#ffb547", RED = "#ff4b3e", INK = "#e6fff4", DIM = "#6fa58f";
+  // 상점 꾸미기 (공장 장부에서 한 번만 읽는다)
+  const eq = slot => (window.FAB ? FAB.equipped("pin", slot) : null);
+  const BALL_SKIN = eq("ball"), FLIP_SKIN = eq("flip"), NIGHT = eq("table") === "pin_night";
+  const BSK = {
+    pin_gold: { trail: "255,184,64", glow: "255,214,90", halo: "255,140,30", gm: 1.15, ga: 0.1, core: ["#fffdf0", "#ffe58a", "#c8901e"], ring: "255,170,40", n: 12 },
+    pin_plasma: { trail: "255,111,181", trail2: "165,110,255", glow: "255,130,200", halo: "140,80,255", gm: 1.45, ga: 0.25, core: ["#ffffff", "#ffe6f6", "#ff9ad2"], ring: "190,120,255", n: 18, plasma: true },
+  }[BALL_SKIN] || { trail: "93,255,195", glow: "93,255,195", core: ["#ffffff", "#e6fff6", "#8ff5d2"], ring: "47,191,154", n: 10 };
 
   // ================= 소리 =================
   let actx = null, master = null, noiseBuf = null, sndOn = true, guardAT = -1, guardWall = 0, quiet = false;
@@ -217,6 +225,7 @@
   let boss = null, charging = false, charge = 0, autoLaunchAt = 0, saveUntil = 0, launched = false, saucerCool = 0;
   let orbitArm = -9, lastOrbit = -9, orbitChain = 0, lostAt = 0, bonusTotal = 0, bonusLeft = 0, stillFor = 0, clockAt = -9;
   let per = null; const still = { x: 0, y: 0 };                      // 공 하나 동안의 기록 (보너스 계산)
+  let game = { bossKills: 0, jackpots: 0, clock: 1 };                  // 한 판 기록 (공장 장부에 보고)
   const ball = { x: 371.5, y: 770, vx: 0, vy: 0, px: 371.5, py: 770, held: null, hidden: true };
   const stats = { maxPen: 0, rescues: 0, nudges: 0 };
   const ev = { bumper: 0, sling: 0, lane: 0, clock: 0, orbit: 0, saucer: 0, bossSpawn: 0, bossHit: 0, bossKill: 0, drain: 0, save: 0, flick: 0, over: 0 };
@@ -243,6 +252,7 @@
   // ================= 게임 흐름 =================
   function start() {
     state = "ready"; score = 0; balls = 3; mult = 1; newBest = false; boss = null; ban = null;
+    game = { bossKills: 0, jackpots: 0, clock: 1 };
     lanes = [0, 0, 0, 0, 0]; lanesClearAt = 0; laneNotes = 0; orbitChain = 0; lastOrbit = -9;
     newBall(); sfx.start();
   }
@@ -278,6 +288,9 @@
     state = "over"; overAt = now; ev.over++;
     if (score > best) { best = score; newBest = true; store.set("pinball.best", String(best)); }
     sfx.over();
+    game.clock = Math.max(game.clock, mult);
+    const rec = { score: Math.round(score), bossKills: game.bossKills, clock: game.clock, jackpots: game.jackpots };
+    if (window.FAB) setTimeout(() => FAB.report("pin", rec), 900);
   }
   function laneHit(i, x) {
     if (i < 0 || i > 4 || simT < laneCool[i]) return;
@@ -291,7 +304,7 @@
   }
   function clockUp() {
     ev.clock++; lanesClearAt = simT + 0.9; clockAt = now;
-    if (mult < 5) { mult++; banner("클럭 업!", `점수 ×${mult} · 불량 다이 출현`, GOLD, 1.9); }
+    if (mult < 5) { mult++; game.clock = Math.max(game.clock, mult); banner("클럭 업!", `점수 ×${mult} · 불량 다이 출현`, GOLD, 1.9); }
     else { add(2500, CX, 210, GOLD, 1.4); banner("클럭 최대!", "보너스 +2,500 ×5", GOLD, 1.9); }
     sfx.clock(); jolt(6); vib([20, 30, 20]); flash = 0.5;
     spawnBoss();
@@ -318,7 +331,7 @@
       sfx.bossHit(); jolt(8, 0.06); vib(35);
       burst(hx, hy, 18, ["#ffffff", "#ffd98a", "#ff8a7a"], 420, 0.45, [nx, ny]); ring(hx, hy, 6, 46, "#fff4c2", 0.25, 4);
     } else {
-      ev.bossKill++;
+      ev.bossKill++; game.bossKills++;
       add(5000, DIE.x, DIE.y - 40, GOLD, 1.8);
       banner("불량 제거!", `+${fmt(5000 * mult)}`, GOLD, 2.0);
       sfx.bossKill(); jolt(15, 0.14); vib([60, 40, 90]); flash = 0.8;
@@ -343,7 +356,7 @@
   }
   let orbitFx = -9;
   function capture() {
-    ev.saucer++; per.sau++;
+    ev.saucer++; per.sau++; game.jackpots++;
     ball.held = { until: simT + 1.05 }; ball.x = SAU.x; ball.y = SAU.y; ball.vx = 0; ball.vy = 0; trail = [];
     add(1000, SAU.x, SAU.y - 26, GOLD, 1.6);
     banner("비아 홀 잭팟!", `+${fmt(1000 * mult)}`, GOLD, 1.4);
@@ -498,7 +511,7 @@
     if (down) f.src.add(src); else f.src.delete(src);
     const was = f.down; f.down = f.src.size > 0;
     if (f.down && !was && (state === "play" || state === "ready")) {
-      sfx.flip();
+      sfx.flip(); f.glintAt = now;
       // 레인 바꾸기: 누를 때마다 켜진 글자가 한 칸씩 돈다
       if (!lanesClearAt) lanes = side === "L" ? lanes.slice(1).concat(lanes[0]) : [lanes[4]].concat(lanes.slice(0, 4));
     }
@@ -552,14 +565,40 @@
   }
   const RAILS = cols.filter(c => ["wall", "rail", "gate", "guide", "floor", "rubber"].includes(c.kind));
   function silk(g, text, x, y, size = 9, col = "rgba(230,255,244,.42)", font = "num", align = "center") {
+    if (NIGHT) col = col.replace("230,255,244", "255,238,200");
     g.font = font === "num" ? `700 ${size}px ${FONT.num}` : `${size}px ${FONT.kr}`; g.fillStyle = col; g.textAlign = align; g.fillText(text, x, y);
+  }
+  // 야간 리소 조명: 기판을 한 톤 가라앉히고, 위쪽 노광 램프에서 노란빛이 비스듬히 쏟아진다 (tablePath로 잘린 상태에서 부른다)
+  function nightWash(g) {
+    g.save();
+    const deep = g.createLinearGradient(0, 60, 0, 840);                                   // 한 톤 깊게 (아래로 갈수록 보랏빛 어둠)
+    deep.addColorStop(0, "rgba(16,8,28,.30)"); deep.addColorStop(1, "rgba(12,6,26,.58)");
+    g.fillStyle = deep; g.fillRect(0, 60, W, 820);
+    const wash = g.createLinearGradient(0, 64, 0, 620);
+    wash.addColorStop(0, "rgba(255,190,80,.24)"); wash.addColorStop(0.35, "rgba(255,170,60,.10)"); wash.addColorStop(1, "rgba(255,160,50,0)");
+    g.fillStyle = wash; g.fillRect(0, 60, W, 820);
+    g.globalCompositeOperation = "lighter";
+    // 비스듬한 광선 다발: 왼쪽 위 램프에서 오른쪽 아래로
+    const beams = [[30, 46, 0.075], [120, 30, 0.05], [190, 58, 0.065], [290, 26, 0.045], [350, 40, 0.055]];
+    for (const [x0, w, a] of beams) {
+      const lg = g.createLinearGradient(0, 60, 0, 760);
+      lg.addColorStop(0, `rgba(255,214,96,${a})`); lg.addColorStop(0.6, `rgba(255,200,80,${a * 0.4})`); lg.addColorStop(1, "rgba(255,200,80,0)");
+      g.fillStyle = lg; g.beginPath();
+      g.moveTo(x0, 60); g.lineTo(x0 + w, 60); g.lineTo(x0 + w * 2.4 + 230, 780); g.lineTo(x0 + w * 0.6 + 230, 780); g.closePath(); g.fill();
+    }
+    // 램프 자체: 꼭대기를 따라 켜진 따뜻한 띠
+    const lamp = g.createRadialGradient(CX, 70, 4, CX, 70, 210);
+    lamp.addColorStop(0, "rgba(255,226,130,.20)"); lamp.addColorStop(1, "rgba(255,200,90,0)");
+    g.fillStyle = lamp; g.fillRect(0, 60, W, 260);
+    g.restore();
   }
   function buildBg() {
     const c = document.createElement("canvas");
     c.width = Math.ceil((EX1 - EX0) * S * DPR); c.height = Math.ceil((EY1 - EY0) * S * DPR);
     const g = c.getContext("2d"); g.setTransform(S * DPR, 0, 0, S * DPR, -EX0 * S * DPR, -EY0 * S * DPR);
     const gr = g.createLinearGradient(0, EY0, 0, EY1);
-    gr.addColorStop(0, "#020605"); gr.addColorStop(0.6, "#05120e"); gr.addColorStop(1, "#071a14");
+    if (NIGHT) { gr.addColorStop(0, "#0b0704"); gr.addColorStop(0.6, "#08070f"); gr.addColorStop(1, "#0d0a1c"); }
+    else { gr.addColorStop(0, "#020605"); gr.addColorStop(0.6, "#05120e"); gr.addColorStop(1, "#071a14"); }
     g.fillStyle = gr; g.fillRect(EX0, EY0, EX1 - EX0, EY1 - EY0);
     let seed = 11; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
     g.lineWidth = 1.2; g.lineCap = "round";
@@ -571,7 +610,7 @@
       g.stroke();
     }
     // 기판 바탕: 짙은 솔더 마스크
-    g.save(); g.shadowColor = "rgba(93,255,195,.25)"; g.shadowBlur = 24; tablePath(g); g.fillStyle = "#0a2119"; g.fill(); g.restore();
+    g.save(); g.shadowColor = NIGHT ? "rgba(255,200,90,.28)" : "rgba(93,255,195,.25)"; g.shadowBlur = 24; tablePath(g); g.fillStyle = NIGHT ? "#081812" : "#0a2119"; g.fill(); g.restore();
     g.save(); tablePath(g); g.clip();
     const bd = g.createLinearGradient(0, 70, 0, 820); bd.addColorStop(0, "#0d2c21"); bd.addColorStop(0.55, "#0a2219"); bd.addColorStop(1, "#071812");
     g.fillStyle = bd; g.fillRect(0, 60, W, 820);
@@ -593,6 +632,7 @@
     g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(352, 300, 40, 520);
     g.beginPath(); g.arc(CX, CY, 188, Math.PI, ORB); g.arc(CX, CY, 150, ORB, Math.PI, true); g.closePath(); g.fill();
     g.fillRect(12, CY, 38, 114);
+    if (NIGHT) nightWash(g);
     // 배수구 (GND)
     const dg = g.createLinearGradient(0, 750, 0, 830); dg.addColorStop(0, "rgba(0,0,0,0)"); dg.addColorStop(1, "rgba(0,0,0,.55)");
     g.fillStyle = dg; g.fillRect(40, 740, 284, 100);
@@ -633,8 +673,8 @@
     for (const c of RAILS) { colPath(g, c); g.strokeStyle = "rgba(0,0,0,.55)"; g.lineWidth = c.r * 2 + 4; g.stroke(); }
     for (const c of RAILS) {
       colPath(g, c);
-      g.strokeStyle = c.kind === "gate" ? "#7f6a3a" : c.kind === "rubber" ? "#cfd8d4" : "#c99a3e"; g.lineWidth = c.r * 2 + 1; g.stroke();
-      g.strokeStyle = c.kind === "rubber" ? "rgba(255,255,255,.7)" : "rgba(255,230,160,.55)"; g.lineWidth = 1; g.stroke();
+      g.strokeStyle = c.kind === "gate" ? (NIGHT ? "#8f7234" : "#7f6a3a") : c.kind === "rubber" ? (NIGHT ? "#e6dcc6" : "#cfd8d4") : (NIGHT ? "#dba548" : "#c99a3e"); g.lineWidth = c.r * 2 + 1; g.stroke();
+      g.strokeStyle = c.kind === "rubber" ? "rgba(255,255,255,.7)" : NIGHT ? "rgba(255,226,140,.7)" : "rgba(255,230,160,.55)"; g.lineWidth = 1; g.stroke();
     }
     // 비아 홀: 금빛 고리 + 뚫린 구멍
     g.fillStyle = "#c99a3e"; g.beginPath(); g.arc(SAU.x, SAU.y, 17, 0, TAU); g.fill();
@@ -792,13 +832,51 @@
       const up = (FL.rest - f.a) / (FL.rest - FL.up);
       ctx.save(); ctx.translate(3, 4); flipperShape(f); ctx.fillStyle = "rgba(0,0,0,.45)"; ctx.fill(); ctx.restore();
       ctx.save(); flipperShape(f);
-      ctx.shadowColor = MINT; ctx.shadowBlur = 8 + up * 18;
-      const g = ctx.createLinearGradient(0, -FL.r0, 0, FL.r0); g.addColorStop(0, "#f0fff8"); g.addColorStop(0.5, "#8dffd6"); g.addColorStop(1, "#2fbf9a");
-      ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0;
-      ctx.strokeStyle = "#0e3a2d"; ctx.lineWidth = 1.2; ctx.stroke();
-      // 가운데 칩 몸통 줄과 축 핀
-      ctx.fillStyle = "rgba(10,40,30,.55)"; ctx.fillRect(10, -2.2, FL.len - 18, 4.4);
-      ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(0, 0, 4, 0, TAU); ctx.fill();
+      if (FLIP_SKIN === "pin_fneon") {
+        // 네온 핑크: 짙은 관 안에서 빛나는 분홍 네온, 휘두를수록 번진다
+        ctx.shadowColor = "#ff4fa8"; ctx.shadowBlur = 14 + up * 26;
+        const g = ctx.createLinearGradient(0, -FL.r0, 0, FL.r0); g.addColorStop(0, "#ffd6ec"); g.addColorStop(0.45, "#ff6fb5"); g.addColorStop(1, "#a8185f");
+        ctx.fillStyle = g; ctx.fill(); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.globalCompositeOperation = "lighter";
+        ctx.strokeStyle = `rgba(255,170,215,${0.55 + up * 0.45})`; ctx.lineWidth = 2; ctx.stroke();
+        ctx.globalCompositeOperation = "source-over";
+        ctx.fillStyle = "rgba(255,240,250,.85)"; ctx.fillRect(9, -1, FL.len - 16, 2);       // 네온관 가운데 흰 심
+        ctx.fillStyle = "#ffe0f0"; ctx.shadowColor = "#ff6fb5"; ctx.shadowBlur = 8; ctx.beginPath(); ctx.arc(0, 0, 4, 0, TAU); ctx.fill(); ctx.shadowBlur = 0;
+      } else if (FLIP_SKIN === "pin_fgold") {
+        // 금 도금: 원통처럼 빛이 도는 금속 그라데이션 + 휘두를 때 끝으로 달려가는 반짝임
+        ctx.shadowColor = "rgba(255,200,70,.75)"; ctx.shadowBlur = 6 + up * 14;
+        const g = ctx.createLinearGradient(0, -FL.r0, 0, FL.r0);
+        g.addColorStop(0, "#fff6c4"); g.addColorStop(0.18, "#ffe27a"); g.addColorStop(0.42, "#c8901e"); g.addColorStop(0.62, "#8a5a10"); g.addColorStop(0.82, "#d9a83a"); g.addColorStop(1, "#6e470b");
+        ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0;
+        ctx.strokeStyle = "#4a3006"; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.save(); ctx.clip();
+        ctx.fillStyle = "rgba(255,255,235,.55)"; ctx.fillRect(2, -FL.r0 * 0.62, FL.len, 1.6);   // 윗면 하이라이트
+        const sw = Math.sin(now * 0.9 + (f.s > 0 ? 0 : 2)) * 0.5 + 0.5, gx = -10 + sw * (FL.len + 20);
+        const sh = ctx.createLinearGradient(gx - 10, 0, gx + 10, 0);                          // 천천히 지나가는 금속 광택
+        sh.addColorStop(0, "rgba(255,255,255,0)"); sh.addColorStop(0.5, "rgba(255,255,240,.38)"); sh.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = sh; ctx.fillRect(gx - 10, -FL.r0, 20, FL.r0 * 2);
+        ctx.restore();
+        ctx.fillStyle = "rgba(70,45,5,.45)"; ctx.fillRect(10, -2.2, FL.len - 18, 4.4);
+        ctx.fillStyle = "#fff2a8"; ctx.beginPath(); ctx.arc(0, 0, 4, 0, TAU); ctx.fill();
+        ctx.strokeStyle = "#8a5a10"; ctx.lineWidth = 1; ctx.stroke();
+        const ge = now - (f.glintAt || -9);
+        if (ge < 0.42) {
+          const u = ge / 0.42, gx2 = lerp(6, FL.len, easeOut(u)), gs = 9 * Math.sin(u * Math.PI);
+          ctx.globalCompositeOperation = "lighter"; ctx.fillStyle = "rgba(255,250,215,.95)"; ctx.shadowColor = "#ffe27a"; ctx.shadowBlur = 10;
+          ctx.translate(gx2, -FL.r1 * 0.7); ctx.rotate(u * 1.6);
+          ctx.beginPath();
+          for (let i = 0; i < 8; i++) { const r = i % 2 ? gs * 0.22 : gs, a = i * Math.PI / 4; ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+          ctx.closePath(); ctx.fill();
+        }
+      } else {
+        ctx.shadowColor = MINT; ctx.shadowBlur = 8 + up * 18;
+        const g = ctx.createLinearGradient(0, -FL.r0, 0, FL.r0); g.addColorStop(0, "#f0fff8"); g.addColorStop(0.5, "#8dffd6"); g.addColorStop(1, "#2fbf9a");
+        ctx.fillStyle = g; ctx.fill(); ctx.shadowBlur = 0;
+        ctx.strokeStyle = "#0e3a2d"; ctx.lineWidth = 1.2; ctx.stroke();
+        // 가운데 칩 몸통 줄과 축 핀
+        ctx.fillStyle = "rgba(10,40,30,.55)"; ctx.fillRect(10, -2.2, FL.len - 18, 4.4);
+        ctx.fillStyle = GOLD; ctx.beginPath(); ctx.arc(0, 0, 4, 0, TAU); ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -817,21 +895,44 @@
     let bx = b.x, by = b.y; if (state === "ready" && !autoLaunchAt && b.y > 740) by += charge * 22;
     const sp = Math.hypot(b.vx, b.vy), k = clamp(sp / 1800, 0, 1);
     ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.lineCap = "round";
+    const fl = BSK.plasma ? 0.8 + 0.35 * Math.random() : 1;                     // 플라스마는 빛이 떨린다
     for (let i = 1; i < trail.length; i++) {
       const p = trail[i - 1], q = trail[i], u = i / trail.length;
-      ctx.strokeStyle = `rgba(93,255,195,${u * (0.12 + 0.5 * k)})`; ctx.lineWidth = BR * 2 * u * (0.45 + 0.55 * k);
+      const tc = BSK.trail2 && u < 0.6 ? BSK.trail2 : BSK.trail;              // 플라스마 꼬리: 끝은 보라, 머리는 분홍
+      ctx.strokeStyle = `rgba(${tc},${u * (0.12 + 0.5 * k) * (BSK.plasma ? 1.15 : 1)})`; ctx.lineWidth = BR * 2 * u * (0.45 + 0.55 * k) * (BSK.plasma ? fl : 1);
       ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
     }
-    const gr = BR * (2.4 + 1.6 * k), gl = ctx.createRadialGradient(bx, by, 0, bx, by, gr);
-    gl.addColorStop(0, `rgba(93,255,195,${0.5 + 0.35 * k})`); gl.addColorStop(1, "rgba(93,255,195,0)");
+    const gr = BR * (2.4 + 1.6 * k) * (BSK.gm || 1) * fl, gl = ctx.createRadialGradient(bx, by, 0, bx, by, gr);
+    gl.addColorStop(0, `rgba(${BSK.glow},${Math.min(1, 0.5 + (BSK.ga || 0) + 0.35 * k)})`);
+    if (BSK.halo) gl.addColorStop(0.5, `rgba(${BSK.halo},${0.3 + 0.15 * k})`);
+    gl.addColorStop(1, `rgba(${BSK.halo || BSK.glow},0)`);
     ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(bx, by, gr, 0, TAU); ctx.fill();
+    if (BSK.plasma && !quiet) {
+      // 공 둘레를 튀는 방전 줄기 2~3가닥 (프레임마다 새로)
+      ctx.lineWidth = 1.3; ctx.shadowColor = "#ff6fb5"; ctx.shadowBlur = 6;
+      const n = 2 + (Math.random() < 0.5 ? 1 : 0);
+      for (let j = 0; j < n; j++) {
+        let a = rand(0, TAU), r = BR * 0.9; ctx.strokeStyle = Math.random() < 0.5 ? "rgba(255,220,245,.9)" : "rgba(190,140,255,.85)";
+        ctx.beginPath(); ctx.moveTo(bx + Math.cos(a) * r, by + Math.sin(a) * r);
+        for (let s = 0; s < 4; s++) { a += rand(-0.6, 0.6); r += rand(3, 6); ctx.lineTo(bx + Math.cos(a) * r, by + Math.sin(a) * r); }
+        ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+    }
     ctx.restore();
     ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.arc(bx + 3, by + 4, BR, 0, TAU); ctx.fill();
     const cg = ctx.createRadialGradient(bx - BR * 0.3, by - BR * 0.3, BR * 0.1, bx, by, BR);
-    cg.addColorStop(0, "#ffffff"); cg.addColorStop(0.6, "#e6fff6"); cg.addColorStop(1, "#8ff5d2");
+    cg.addColorStop(0, BSK.core[0]); cg.addColorStop(0.6, BSK.core[1]); cg.addColorStop(1, BSK.core[2]);
     ctx.fillStyle = cg; ctx.beginPath(); ctx.arc(bx, by, BR, 0, TAU); ctx.fill();
-    ctx.strokeStyle = `rgba(47,191,154,${0.6 + 0.4 * k})`; ctx.lineWidth = 1.2;
+    if (BSK.plasma) {                                                            // 하얗게 끓는 심
+      const hc = ctx.createRadialGradient(bx, by, 0, bx, by, BR * 0.7);
+      hc.addColorStop(0, "rgba(255,255,255,1)"); hc.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = hc; ctx.beginPath(); ctx.arc(bx, by, BR * 0.7 * fl, 0, TAU); ctx.fill();
+    }
+    ctx.strokeStyle = `rgba(${BSK.ring},${0.6 + 0.4 * k})`; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.ellipse(bx, by, BR * 1.55, BR * 0.45, now * 8, 0, TAU); ctx.stroke();
+    if (BALL_SKIN === "pin_gold") { ctx.beginPath(); ctx.ellipse(bx, by, BR * 1.45, BR * 0.4, -now * 6 + 1.2, 0, TAU); ctx.strokeStyle = `rgba(255,240,190,${0.35 + 0.3 * k})`; ctx.stroke(); }
+    if (BSK.plasma) { ctx.beginPath(); ctx.ellipse(bx, by, BR * 1.6, BR * 0.5, -now * 11, 0, TAU); ctx.strokeStyle = `rgba(255,111,181,${0.5 + 0.4 * k})`; ctx.stroke(); }
   }
   function drawFx(dt) {
     ctx.save(); ctx.globalCompositeOperation = "lighter";
@@ -1013,7 +1114,7 @@
       if (now >= stopUntil) acc += dt * tscale;
       while (acc >= STEP && now >= stopUntil && n < 12) { step(); acc -= STEP; n++; }
       if (n >= 12) acc = 0;
-      if (!ball.hidden && !ball.held) { trail.push({ x: ball.x, y: ball.y }); if (trail.length > 10) trail.shift(); } else if (trail.length) trail.shift();
+      if (!ball.hidden && !ball.held) { trail.push({ x: ball.x, y: ball.y }); if (trail.length > BSK.n) trail.shift(); } else if (trail.length) trail.shift();
       shake *= Math.pow(0.0015, dt); flash = Math.max(0, flash - dt * 2);
     }
     draw(dt);
