@@ -34,6 +34,7 @@
 <body>
 <canvas id="c" aria-label="팹 물류 게임 화면. 갈림길을 눌러 레일 방향을 바꾸고, 웨이퍼 통을 같은 색 장비로 보낸다."></canvas>
 <button id="snd" type="button">소리 켬</button>
+<script src="../common/fab.js?v=8"></script>
 <script>
 (() => {
   "use strict";
@@ -217,7 +218,12 @@
   let L = build(0), stage = 0, foups = [], drops = [], pops = [], sparks = [], queue = [], uid = 0;
   let score = 0, lives = 3, combo = 0, best = +(store.get("rail.best") || 0), overAt = 0, newBest = false, shake = 0;
   let spawnT = 0, pending = false, trans = null, banner = null, lampAt = [-9, -9, -9], delivered = 0, wrong = 0;
+  let maxCombo = 0, clean = 0, cleanSet = false, confetti = [], flashes = [];
   const dbg = { auto: true, god: false, log: [] };
+  // 공장 장부의 꾸미기: 통(금빛·투명), 레일(금·네온), 배송 효과(축포). 페이지를 열 때 한 번 읽는다
+  const eq = slot => { try { return window.FAB ? FAB.equipped("rail", slot) : null; } catch (e) { return null; } };
+  const SKIN = { foup: eq("foup"), rail: eq("rail"), fx: eq("fx") };
+  const PARTY = ["#ff5a6a", "#ffcf3a", "#5dffc3", "#3bd1ff", "#b38cff", "#ff6fb5", "#ffffff"];
 
   // 새 장비가 들어오면 숨 돌릴 틈: 단계 안에서의 점수로 빨라지고, 단계가 바뀌면 다시 느긋하게 시작한다
   const local = () => score - STAGE_AT[stage];
@@ -234,7 +240,7 @@
   }
   function reset() {
     L = build(0); stage = 0; foups = []; drops = []; pops = []; sparks = []; queue = [];
-    score = 0; lives = 3; combo = 0; delivered = 0; wrong = 0; spawnT = interval() - 1.0; pending = false; trans = null; banner = null; lampAt = [-9, -9, -9];
+    score = 0; lives = 3; combo = 0; delivered = 0; wrong = 0; maxCombo = 0; clean = 0; cleanSet = false; confetti = []; flashes = []; spawnT = interval() - 1.0; pending = false; trans = null; banner = null; lampAt = [-9, -9, -9];
     fillQueue();
   }
   function start() { reset(); state = "play"; newBest = false; sfx.start(); humOn(true); }
@@ -297,6 +303,10 @@
         const b = combo % 10 === 0 ? 5 : 2; score += b;
         pop(200, 214, `연속 ${combo}! +${b}`, "#ffcf3a", true); setTimeout(sfx.bonus, 140);
       }
+      if (combo > maxCombo) maxCombo = combo;
+      // 20점에 처음 닿는 순간까지 오배송이 하나도 없었으면 '경보 없는 하루'
+      if (!cleanSet && score >= 20) { cleanSet = true; clean = wrong === 0 ? 1 : 0; }
+      if (SKIN.fx === "rail_party") party(t);
     } else {
       combo = 0; wrong++; t.bad = now; shake = 6;
       pop(t.x, t.y - 6, "오배송!", "#ff6b5e"); sfx.alarm(); vib([80, 50, 80]);
@@ -307,6 +317,26 @@
   function gameOver() {
     state = "over"; overAt = now; shake = 9; vib([60, 40, 120]); sfx.over(); humOn(false);
     if (score > best) { best = score; newBest = true; store.set("rail.best", String(best)); }
+    const rec = { score, delivered, maxCombo, clean: cleanSet ? clean : 0 };
+    if (window.FAB) setTimeout(() => FAB.report("rail", rec), 900);
+  }
+  // 배송 축포: 장비 위로 색종이가 터지고 불꽃 두세 송이가 핀다
+  function party(t) {
+    flashes.push({ x: t.x, y: t.y + 30, c: t.c, at: now });
+    for (let i = 0; i < 40; i++) {
+      const a = rand(-Math.PI * 0.9, -Math.PI * 0.1), v = rand(140, 290);
+      confetti.push({ k: 0, x: t.x + rand(-12, 12), y: t.y + 2, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: 0, life: rand(1.4, 2.0),
+        c: PARTY[i % PARTY.length], rot: rand(0, 6), vr: rand(-14, 14), w: rand(4, 6), h: rand(7, 11) });
+    }
+    const nb = 2 + (Math.random() < 0.5 ? 1 : 0);
+    for (let b = 0; b < nb; b++) {
+      const bx = clamp(t.x + rand(-60, 60), 30, 370), by = t.y - rand(70, 150), dl = 0.08 + b * 0.14, c1 = PARTY[(b * 2 + Math.floor(rand(0, 7))) % 7], c2 = PARTY[(b * 2 + 3) % 7];
+      for (let i = 0; i < 28; i++) {
+        const a = (i / 28) * Math.PI * 2 + rand(-0.06, 0.06), v = rand(85, 125);
+        confetti.push({ k: 1, x: bx, y: by, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t: -dl, life: rand(0.9, 1.2), c: i % 2 ? c1 : c2 });
+      }
+      flashes.push({ x: bx, y: by, c: c1, at: now + dl, small: true });
+    }
   }
 
   // ================= 입력 =================
@@ -388,6 +418,14 @@
     }
     for (const s of sparks) { s.t += dt; s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 220 * dt; s.vx *= 0.97; }
     sparks = sparks.filter(s => s.t < s.life);
+    for (const p of confetti) {
+      if (p.t < 0) { p.t += dt; continue; }
+      p.t += dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.k) { p.vx *= Math.pow(0.12, dt); p.vy = p.vy * Math.pow(0.12, dt) + 70 * dt; }
+      else { p.vx *= Math.pow(0.25, dt); p.vy = p.vy * Math.pow(0.3, dt) + 190 * dt; p.rot += p.vr * dt; p.x += Math.sin(p.t * 9 + p.vr) * 18 * dt; }
+    }
+    confetti = confetti.filter(p => p.t < p.life);
+    flashes = flashes.filter(f => now - f.at < 0.55);
     drops = drops.filter(d => now - d.at < 0.6);
     shake *= Math.pow(0.001, dt);
   }
@@ -447,7 +485,8 @@
     for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
     ctx.restore();
     // 행거 브래킷: 레일을 가로지르는 짧은 눈금
-    ctx.strokeStyle = "#2d3d39"; ctx.lineWidth = 3; ctx.lineCap = "butt"; ctx.beginPath();
+    const RS = SKIN.rail;
+    ctx.strokeStyle = RS === "rail_rgold" ? "#b8862a" : RS === "rail_rneon" ? "rgba(120,170,255,.38)" : "#2d3d39"; ctx.lineWidth = 3; ctx.lineCap = "butt"; ctx.beginPath();
     for (const e of lay.edges) {
       for (let d = e.from < 0 ? 22 : STUB + 6; d < e.len - 4; d += 17) {
         const q = at(e, d), nx = -Math.sin(q.a) * 9, ny = Math.cos(q.a) * 9;
@@ -455,6 +494,8 @@
       }
     }
     ctx.stroke(); ctx.lineCap = "round";
+    if (RS === "rail_rgold") { drawGoldRails(lay); return; }
+    if (RS === "rail_rneon") { drawNeonRails(lay); return; }
     // 은빛 레일 몸체
     ctx.strokeStyle = "#5f6e6a"; ctx.lineWidth = 9; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
     ctx.strokeStyle = "#a9b7b3"; ctx.lineWidth = 6; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
@@ -462,6 +503,34 @@
     ctx.strokeStyle = "rgba(40,55,50,.7)"; ctx.lineWidth = 1; ctx.setLineDash([2, 6]);
     for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
     ctx.setLineDash([]);
+  }
+  // 금 레일: 짙은 청동 테두리 위에 따뜻한 금빛 결, 가운데 반사광과 천천히 흐르는 반짝임
+  function drawGoldRails(lay) {
+    ctx.strokeStyle = "#6b4708"; ctx.lineWidth = 9.5; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    const g = ctx.createLinearGradient(0, 90, 400, 700);
+    [["#b07d16", 0], ["#ffe58a", 0.18], ["#c8961e", 0.36], ["#fff2a8", 0.55], ["#a8740f", 0.75], ["#f5d36a", 1]].forEach(([c, o]) => g.addColorStop(o, c));
+    ctx.strokeStyle = g; ctx.lineWidth = 6.4; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(255,248,205,.85)"; ctx.lineWidth = 1.5; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.strokeStyle = "rgba(90,58,6,.55)"; ctx.lineWidth = 1; ctx.setLineDash([2, 6]);
+    for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.save(); ctx.globalCompositeOperation = "lighter"; ctx.setLineDash([6, 90]); ctx.lineDashOffset = -now * 70;
+    ctx.strokeStyle = "rgba(255,240,180,.55)"; ctx.lineWidth = 3; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.restore(); ctx.setLineDash([]);
+  }
+  // 네온 레일: 어두운 홈 안에 청록에서 보라로 번지는 빛줄
+  function drawNeonRails(lay) {
+    ctx.strokeStyle = "#080a16"; ctx.lineWidth = 9.5; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    const g = ctx.createLinearGradient(0, ENTRY.y, 0, PORT_Y);
+    g.addColorStop(0, "#3bd1ff"); g.addColorStop(0.45, "#5fa4ff"); g.addColorStop(0.8, "#a07dff"); g.addColorStop(1, "#c08cff");
+    const pu = 0.8 + Math.sin(now * 2.2) * 0.2;
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    ctx.shadowColor = "#7f7cff"; ctx.shadowBlur = 14 * pu; ctx.strokeStyle = g; ctx.globalAlpha *= 0.32 * pu; ctx.lineWidth = 7;
+    for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.restore();
+    ctx.save(); ctx.shadowColor = "#5fa4ff"; ctx.shadowBlur = 7; ctx.strokeStyle = g; ctx.lineWidth = 3;
+    for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(225,240,255,.55)"; ctx.lineWidth = 0.8; for (const e of lay.edges) { tracePath(e); ctx.stroke(); }
+    ctx.restore();
   }
   function drawSwitchLanes(lay) {
     for (const s of lay.sws) {
@@ -472,6 +541,8 @@
       ctx.strokeStyle = "rgba(255,110,90,.55)"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(qb.x - nx, qb.y - ny); ctx.lineTo(qb.x + nx, qb.y + ny); ctx.stroke();
       // 켜진 길: 민트 빛이 흘러 들어간다
       const fl = clamp((now - s.flipAt) / 0.25, 0, 1);
+      // 꾸민 레일 위에서도 켜진 길이 또렷하게: 민트 빛 밑을 어둡게 한 겹 깐다
+      if (SKIN.rail) { ctx.strokeStyle = "rgba(4,12,10,.7)"; ctx.lineWidth = 5.5; tracePath(on, 0, 12 + fl * 72); ctx.stroke(); }
       ctx.save(); ctx.globalCompositeOperation = "lighter";
       ctx.shadowColor = "#5dffc3"; ctx.shadowBlur = 10;
       for (let k = 0; k < 6; k++) {
@@ -564,13 +635,45 @@
     ctx.translate(x, y); ctx.rotate(a);
     // 통 몸체 (흔들림만큼 호이스트에서 살짝 밀린다)
     ctx.save(); ctx.translate(sway * k, 0); ctx.scale(k * (1 - hoist * 0.25), k * (1 - hoist * 0.25));
-    const g = ctx.createLinearGradient(-12, -12, 12, 12); g.addColorStop(0, "#f6faf8"); g.addColorStop(1, "#a9b5b1");
-    ctx.fillStyle = g; rr(-12.5, -12, 25, 24, 6.5); ctx.fill();
-    ctx.strokeStyle = "#66736f"; ctx.lineWidth = 1; rr(-12.5, -12, 25, 24, 6.5); ctx.stroke();
-    // 목적지 색 뚜껑
-    const lg = ctx.createLinearGradient(0, -9, 0, 9); lg.addColorStop(0, c); lg.addColorStop(1, shade(c));
-    ctx.fillStyle = lg; rr(-9, -9, 18, 18, 4); ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,.3)"; rr(-9, -9, 18, 3.5, [4, 4, 0, 0]); ctx.fill();
+    const FS = SKIN.foup;
+    if (FS === "rail_fclear") {
+      // 투명 통: 유리 같은 껍데기 너머로 세워 꽂힌 웨이퍼가 얇은 원판으로 겹쳐 보인다. 앞문(진행 방향)만 목적지 색
+      ctx.fillStyle = "rgba(170,225,255,.16)"; rr(-12.5, -12, 25, 24, 6.5); ctx.fill();
+      ctx.save(); rr(-12, -11.5, 24, 23, 6); ctx.clip();
+      for (let i = 0; i < 6; i++) {
+        const wx = -10 + i * 1.75;
+        ctx.fillStyle = "rgba(40,60,80,.35)"; ctx.beginPath(); ctx.ellipse(wx + 0.6, 0.4, 0.9, 9.6, 0, 0, 7); ctx.fill();
+        const wg = ctx.createLinearGradient(0, -9.5, 0, 9.5); wg.addColorStop(0, "#f2f6ff"); wg.addColorStop(0.45, "#b9c6e0"); wg.addColorStop(0.7, "#d9c8f2"); wg.addColorStop(1, "#8fa0c4");
+        ctx.fillStyle = wg; ctx.beginPath(); ctx.ellipse(wx, 0, 0.75, 9.5, 0, 0, 7); ctx.fill();
+      }
+      ctx.restore();
+      ctx.globalAlpha *= 0.55; ctx.strokeStyle = c; ctx.lineWidth = 1.2; rr(-11.3, -10.8, 22.6, 21.6, 5.4); ctx.stroke(); ctx.globalAlpha /= 0.55;
+      ctx.strokeStyle = "rgba(205,240,255,.85)"; ctx.lineWidth = 1.1; rr(-12.5, -12, 25, 24, 6.5); ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,.35)"; rr(-11, -10.5, 20, 2, 1); ctx.fill();
+      const lg = ctx.createLinearGradient(0, -10, 0, 10); lg.addColorStop(0, c); lg.addColorStop(1, shade(c));
+      ctx.fillStyle = lg; rr(0.5, -10.5, 10.5, 21, [2, 5, 5, 2]); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.35)"; rr(1.5, -9.5, 2.2, 19, 1); ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,.28)"; rr(5.6, -4, 2.4, 8, 1); ctx.fill();
+    } else {
+      const gold = FS === "rail_fgold";
+      const g = ctx.createLinearGradient(-12, -12, 12, 12);
+      if (gold) { g.addColorStop(0, "#fff4b8"); g.addColorStop(0.3, "#f0c548"); g.addColorStop(0.6, "#a8740f"); g.addColorStop(0.85, "#e8b53a"); g.addColorStop(1, "#7a520c"); }
+      else { g.addColorStop(0, "#f6faf8"); g.addColorStop(1, "#a9b5b1"); }
+      ctx.fillStyle = g; rr(-12.5, -12, 25, 24, 6.5); ctx.fill();
+      ctx.strokeStyle = gold ? "#5e3f06" : "#66736f"; ctx.lineWidth = 1; rr(-12.5, -12, 25, 24, 6.5); ctx.stroke();
+      if (gold) {
+        // 금 껍데기 반짝임: 비스듬한 빛줄이 천천히 훑고 지나간다
+        ctx.save(); rr(-12.5, -12, 25, 24, 6.5); ctx.clip();
+        const sx = ((now * 22 + ph * 9) % 60) - 30;
+        ctx.fillStyle = "rgba(255,252,225,.55)"; ctx.beginPath(); ctx.moveTo(sx - 3, -13); ctx.lineTo(sx + 2, -13); ctx.lineTo(sx - 6, 13); ctx.lineTo(sx - 11, 13); ctx.fill();
+        ctx.restore();
+      }
+      // 목적지 색 뚜껑 (금 껍데기에선 어두운 테로 둘러 색이 묻히지 않게)
+      if (gold) { ctx.fillStyle = "#3a2604"; rr(-10, -10, 20, 20, 4.6); ctx.fill(); }
+      const lg = ctx.createLinearGradient(0, -9, 0, 9); lg.addColorStop(0, c); lg.addColorStop(1, shade(c));
+      ctx.fillStyle = lg; rr(-9, -9, 18, 18, 4); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.3)"; rr(-9, -9, 18, 3.5, [4, 4, 0, 0]); ctx.fill();
+    }
     ctx.restore();
     // OHT 호이스트 대차: 가운데 작은 몸체와 앞뒤 바퀴
     ctx.scale(k, k);
@@ -708,6 +811,35 @@
     ctx.restore();
   }
 
+  function drawParty() {
+    ctx.save(); ctx.globalCompositeOperation = "lighter";
+    for (const f of flashes) {
+      const e = now - f.at; if (e < 0) continue;
+      const life = f.small ? 0.35 : 0.5, u = clamp(e / life, 0, 1), r = (f.small ? 34 : 96) * (0.5 + easeOut(u) * 0.7);
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, r);
+      g.addColorStop(0, `rgba(255,255,255,${0.85 * (1 - u)})`); g.addColorStop(0.35, f.c); g.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.globalAlpha = (f.small ? 0.7 : 0.95) * (1 - u); ctx.fillStyle = g; ctx.fillRect(f.x - r, f.y - r, r * 2, r * 2);
+      if (!f.small) { const bw = 26 * (1 - u) + 4, bg = ctx.createLinearGradient(0, f.y - 230, 0, f.y); bg.addColorStop(0, "rgba(255,255,255,0)"); bg.addColorStop(1, "rgba(255,255,255,.7)");
+        ctx.globalAlpha = 0.7 * (1 - u); ctx.fillStyle = bg; ctx.fillRect(f.x - bw / 2, f.y - 230, bw, 230); }
+      if (!f.small) { ctx.globalAlpha = 0.8 * (1 - u); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.5 * (1 - u) + 0.5; ctx.beginPath(); ctx.arc(f.x, f.y - 30, 14 + easeOut(u) * 56, 0, 7); ctx.stroke(); }
+    }
+    ctx.globalAlpha = 1;
+    for (const p of confetti) {
+      if (p.t < 0 || !p.k) continue;
+      const u = p.t / p.life; ctx.globalAlpha = (1 - u) * (u < 0.15 ? 1 : 0.9);
+      ctx.strokeStyle = p.c; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(p.x - p.vx * 0.12, p.y - p.vy * 0.12); ctx.lineTo(p.x, p.y); ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p.x, p.y, 1.4, 0, 7); ctx.fill();
+    }
+    ctx.restore(); ctx.save();
+    for (const p of confetti) {
+      if (p.t < 0 || p.k) continue;
+      const u = p.t / p.life; ctx.globalAlpha = u > 0.7 ? (1 - u) / 0.3 : 1;
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.scale(1, Math.cos(p.t * 11 + p.vr) || 0.1);
+      ctx.fillStyle = p.c; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+    }
+    ctx.restore();
+  }
   function drawLayout(lay, alpha) {
     ctx.save(); ctx.globalAlpha = alpha;
     drawTools(lay, 1);
@@ -733,6 +865,7 @@
     for (const f of foups) drawFoup(f.x, f.y, f.a, f.dest, 1, 1, f.ph);
     for (const s of sparks) { ctx.globalAlpha = 1 - s.t / s.life; ctx.fillStyle = s.c; ctx.fillRect(s.x - 1.5, s.y - 1.5, 3, 3); }
     ctx.globalAlpha = 1;
+    if (flashes.length || confetti.length) drawParty();
     drawStocker();
     ctx.setTransform(S * DPR, 0, 0, S * DPR, OX * DPR, OY * DPR);
     drawHUD();
@@ -760,7 +893,8 @@
     get tools() { return L.tools.map(t => { const p = toScreen(t.x, t.y); return { x: p.x, y: p.y, name: t.n, color: t.c }; }); },
     flip(i) { return flip(i); }, start() { start(); },
     debug: {
-      get log() { return dbg.log; },
+      get log() { return dbg.log; }, get record() { return { score, delivered, maxCombo, clean, cleanSet, wrong }; }, skin: SKIN,
+      kill() { gameOver(); },
       auto(on) { dbg.auto = !!on; }, god(on) { dbg.god = !!on; },
       spawn(n) { spawn(n); }, setScore(v) { score = v; },
       setSwitch(i, v) { L.sws[i].state = v ? 1 : 0; },
