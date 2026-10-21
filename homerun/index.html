@@ -91,7 +91,7 @@
   <div class="btns"><button type="button" id="resume">계속하기</button><button type="button" id="restart" class="ghost">처음부터</button></div>
 </div>
 
-<script src="../common/fab.js?v=7"></script>
+<script src="../common/fab.js?v=8"></script>
 <script>
 (() => {
   "use strict";
@@ -533,7 +533,8 @@
       document.body.appendChild(l); return l;
     } catch (e) { return null; }
   })();
-  const BUZZ = { hr: [45, 35, 70], double: [55], single: [40], out: [18], foul: [18] };
+  // 홈런: 맞는 순간 한 번, 클로즈업 멈춤이 풀리며 공이 튀어 나갈 때 한 번 더
+  const BUZZ = { hr: [60, 120, 80], double: [55], single: [40], out: [18], foul: [18] };
   function buzz(kind, delay) {
     const pat = BUZZ[kind]; if (!pat) return;
     let vib = false;
@@ -873,11 +874,21 @@
 
   // 맞은 공: 3D 포물선으로 날린다 (속도 m/s, 발사각, 좌우각)
   // 맞는 순간: 멈칫(히트스톱) → 화면 흔들림·확대 → 흰 번쩍임 → 충격 고리와 불꽃 → "깡!"
+  // 홈런은 여기에 더해 방망이와 공으로 확 다가가는 클로즈업: 멈춘 채 당겨 들어가(IN) 버티다가(HOLD = 멈춤 끝) 풀리며 빠진다(OUT)
   let jolt = null, stopAt = 0, stopLen = 0;
-  const JOLT = { hr: [95, 10, 0.07, 0.5], double: [75, 7, 0.05, 0.36], single: [60, 5, 0.035, 0.26], out: [35, 3, 0.015, 0.1], foul: [35, 3, 0.015, 0.1] };
+  // [멈춤ms, 흔들림px(화면 기준), 확대 펄스, 흰 번쩍임, 흔들림 길이ms]
+  const JOLT = { hr: [180, 12, 0, 0.5, 0], double: [60, 10, 0.1, 0.36, 420], single: [45, 6.5, 0.06, 0.26, 320], out: [30, 2.5, 0.012, 0.1, 220], foul: [30, 2.5, 0.012, 0.1, 220] };
+  const CLOSE = { zoom: 2.15, in: 95, hold: 180, out: 420, sx: 0.63, sy: 0.5 };   // sx·sy: 맞은 곳을 둘 화면 위치 (타자 얼굴까지 들어오게 오른쪽으로)
   function impact(kind) {
-    const [stop, amp, zoom, flash] = JOLT[kind], s = ballScreen({ x: 0, y: 0.9, d: PLATE_D }), good = kind !== "out" && kind !== "foul";
-    jolt = { at: performance.now(), amp, zoom, flash, x: s.sx, y: s.sy, word: good ? "깡!" : "팅", big: kind === "hr" ? 1.35 : good ? 1 : 0.7, good };
+    const [stop, amp, zoom, flash, dur] = JOLT[kind], s = ballScreen({ x: 0, y: 0.9, d: PLATE_D }), good = kind !== "out" && kind !== "foul";
+    // 방망이를 맞는 자세로 맞춘다: 멈춘 화면에 배트가 공을 때리는 모습이 걸리게
+    if (P && P.swung) P.swingT = Math.min(P.swingT, now - 75);
+    // 클로즈업 중심: 공과 배트 스윗스폿 사이 (공 쪽으로 조금 더)
+    const C = BK_.contact, b = batterPr()(add(C.hands, mul(norm(C.bat), 0.62)));
+    const close = kind === "hr";
+    jolt = { at: performance.now(), kind, amp, zoom, flash, dur: close ? CLOSE.hold + CLOSE.out : dur, close, x: s.sx, y: s.sy,
+      fx: close ? s.sx * 0.6 + b.x * 0.4 : s.sx, fy: close ? s.sy * 0.6 + b.y * 0.4 : s.sy,
+      word: good ? "깡!" : "팅", big: close ? 1.35 : good ? 1 : 0.7, good, seed: Math.random() * 100 };
     stopAt = performance.now(); stopLen = stop;
     const n = good ? 22 : 8;
     for (let i = 0; i < n; i++) {
@@ -885,9 +896,69 @@
       fx.push({ x: s.sx, y: s.sy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1, t: 0, life: rand(0.22, 0.45), col: pick(["#fff7d1", "#ffd659", "#ffffff"]) });
     }
   }
+  // 지금 카메라: 확대 z, 초점(fx,fy)이 화면의 (px,py)에 오도록. 흔들림은 확대 뒤 화면 기준으로 더해 배율과 상관없이 같은 크기
+  let camZ = 1, camK = 0;
+  function joltCam() {
+    if (!jolt) return null;
+    const e = performance.now() - jolt.at;
+    let k = 0, z = 1, a;
+    if (jolt.close) {
+      const C = CLOSE;
+      // 풀릴 땐 처음에 확 빠졌다가 천천히 제자리로 (공이 날아가는 게 바로 보이게)
+      k = e < C.in ? 1 - Math.pow(1 - e / C.in, 3) : e < C.hold ? 1 : Math.pow(1 - Math.min(1, (e - C.hold) / C.out), 3);
+      z = 1 + (C.zoom - 1) * k;
+      a = jolt.amp * (e < C.hold ? 1 - 0.25 * (e / C.hold) : Math.pow(Math.max(0, 1 - (e - C.hold) / (C.out * 0.75)), 2) * 0.75);
+    } else {
+      const d = Math.max(0, 1 - e / jolt.dur);
+      a = jolt.amp * d * d;
+      z = 1 + jolt.zoom * (e < 35 ? 1 - Math.pow(1 - e / 35, 2) : Math.pow(Math.max(0, 1 - (e - 35) / (jolt.dur * 0.8)), 2));
+    }
+    if (a < 0.05 && z < 1.0005) return null;
+    // 흔들림: 잘게 떨리는 값 두 개를 섞어 덜 기계적으로
+    const t = e / 1000 * 60 + jolt.seed;
+    const sx = (Math.sin(t * 2.9) * 0.6 + (Math.random() * 2 - 1) * 0.4) * a, sy = (Math.cos(t * 3.7) * 0.6 + (Math.random() * 2 - 1) * 0.4) * a * 0.8;
+    const rot = jolt.close ? Math.sin(t * 2.3) * 0.012 * (a / jolt.amp) : 0;
+    const tx = jolt.close ? W * CLOSE.sx : jolt.fx, ty = jolt.close ? H * CLOSE.sy : jolt.fy;
+    const px = jolt.fx + (tx - jolt.fx) * k, py = jolt.fy + (ty - jolt.fy) * k;
+    // 흔들려도 화면 가장자리가 비지 않을 만큼은 늘 확대해 둔다
+    const room = Math.max(40, Math.min(px, W - px, py, H - py));
+    z = Math.max(z, 1 + (a * 1.3 + Math.abs(rot) * H * 0.6) / room);
+    return { e, k, z, a, rot, fx: jolt.fx, fy: jolt.fy, px: px + sx, py: py + sy };
+  }
+  // 홈런 클로즈업 위에 화면 기준으로 덧그린다: 가장자리 어둡게 + 맞은 곳에서 사방으로 뻗는 집중선
+  function drawCloseFx(c, cam) {
+    if (!cam || !jolt || !jolt.close || cam.k < 0.02) return;
+    const k = cam.k, e = cam.e, cx = cam.px, cy = cam.py;
+    const g = c.createRadialGradient(cx, cy, 90, cx, cy, H * 0.72);
+    g.addColorStop(0, "rgba(0,0,10,0)"); g.addColorStop(1, `rgba(0,0,10,${0.55 * k})`);
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    const lf = e < CLOSE.hold ? 1 : Math.max(0, 1 - (e - CLOSE.hold) / 160);
+    if (lf > 0) {
+      c.save(); c.globalCompositeOperation = "lighter";
+      const N = 46, R = Math.hypot(W, H);
+      for (let i = 0; i < N; i++) {
+        const ang = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.12, w = 0.006 + Math.random() * 0.016;
+        const r0 = 100 + Math.random() * 90;
+        c.fillStyle = `rgba(255,250,225,${(0.14 + Math.random() * 0.26) * lf})`;
+        c.beginPath();
+        c.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+        c.lineTo(cx + Math.cos(ang - w) * R, cy + Math.sin(ang - w) * R);
+        c.lineTo(cx + Math.cos(ang + w) * R, cy + Math.sin(ang + w) * R);
+        c.closePath(); c.fill();
+      }
+      c.restore();
+    }
+  }
   function drawImpact(c) {
     if (!jolt) return;
     const e = performance.now() - jolt.at;
+    // 홈런: 맞은 자리의 하얀 섬광 (클로즈업과 함께 커졌다 잦아든다)
+    if (jolt.close && e < 260) {
+      const u = e / 260, r = (18 + 26 * Math.sin(Math.min(1, e / 90) * Math.PI / 2)) * (1 - u * 0.4);
+      const g = c.createRadialGradient(jolt.x, jolt.y, 0, jolt.x, jolt.y, r);
+      g.addColorStop(0, `rgba(255,255,255,${0.95 * (1 - u)})`); g.addColorStop(0.35, `rgba(255,246,200,${0.7 * (1 - u)})`); g.addColorStop(1, "rgba(255,220,120,0)");
+      c.save(); c.globalCompositeOperation = "lighter"; c.fillStyle = g; c.beginPath(); c.arc(jolt.x, jolt.y, r, 0, 7); c.fill(); c.restore();
+    }
     // 충격 고리 + 빛살
     if (e < 260) {
       const u = e / 260, r = (jolt.good ? 10 : 6) + u * (jolt.good ? 70 : 34) * jolt.big;
@@ -903,8 +974,9 @@
     // "깡!" 글자: 튀어나왔다가 떠오르며 사라진다
     if (e < 650) {
       const u = e / 650, pop = u < 0.15 ? 0.5 + u / 0.15 * 0.7 : 1.2 - Math.min(0.2, (u - 0.15) * 0.6);
+      const zk = 1 / (1 + (camZ - 1) * 0.6);      // 클로즈업 중엔 글자가 화면을 다 덮지 않게 덜 키운다
       c.save(); c.globalAlpha = u < 0.7 ? 1 : (1 - u) / 0.3;
-      c.translate(jolt.x + 34, jolt.y - 36 - u * 26); c.rotate(-0.18); c.scale(pop * jolt.big, pop * jolt.big);
+      c.translate(jolt.x + 34 * zk, jolt.y - (36 + u * 26) * zk); c.rotate(-0.18); c.scale(pop * jolt.big * zk, pop * jolt.big * zk);
       c.font = "34px 'Black Han Sans', sans-serif"; c.textAlign = "center";
       c.lineWidth = 7; c.strokeStyle = "rgba(20,12,0,.75)"; c.strokeText(jolt.word, 0, 0);
       c.fillStyle = jolt.good ? "#ffd84a" : "#e8ecf5"; c.fillText(jolt.word, 0, 0);
@@ -953,7 +1025,7 @@
     if (P.bunt && !P.result && now >= P.tArr) resolveBunt();
     if (!P.swung && !P.result && now >= P.tArr + WIN.foul + 5) resolve(inZoneFinal() ? "strike" : "ball");
     // 날아가는 공
-    if (P.hit) {
+    if (P.hit && P.hit.t0 !== now) {          // 맞은 그 틱엔 공을 배트 위에 둔다 (멈춤 화면에 공이 배트에 붙어 보이게)
       const h = P.hit, dt = 1.4 / 60;          // 실제보다 1.4배 빠르게 (판정까지 너무 오래 걸리지 않게)
       for (let i = 0; i < 2; i++) {
         if (h.y <= 0 && h.vy < 0) {
@@ -1153,11 +1225,18 @@
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
     for (const p of joints) { const q = pr(p); x0 = Math.min(x0, q.x); y0 = Math.min(y0, q.y); x1 = Math.max(x1, q.x); y1 = Math.max(y1, q.y); }
     const m = 0.35 * pr(joints[0]).k;
-    const lx = Math.max(0, Math.floor((x0 - m) * PL)), ly = Math.max(0, Math.floor((y0 - m) * PL));
-    const lW = Math.min(lw - lx, Math.ceil((x1 - x0 + 2 * m) * PL)), lH = Math.min(lh - ly, Math.ceil((y1 - y0 + 2 * m) * PL));
+    // 본 화면의 지금 변환(맞는 순간의 확대·흔들림 포함)을 인물 층에도 그대로 건다
+    const M = c.getTransform(), kk = PXc / PL, T = [M.a / kk, M.b / kk, M.c / kk, M.d / kk, M.e / kk, M.f / kk];
+    let bx0 = 1e9, by0 = 1e9, bx1 = -1e9, by1 = -1e9;
+    for (const [x, y] of [[x0 - m, y0 - m], [x1 + m, y0 - m], [x0 - m, y1 + m], [x1 + m, y1 + m]]) {
+      const tx = T[0] * x + T[2] * y + T[4], ty = T[1] * x + T[3] * y + T[5];
+      bx0 = Math.min(bx0, tx); by0 = Math.min(by0, ty); bx1 = Math.max(bx1, tx); by1 = Math.max(by1, ty);
+    }
+    const lx = Math.max(0, Math.floor(bx0)), ly = Math.max(0, Math.floor(by0));
+    const lW = Math.min(lw - lx, Math.ceil(bx1 - lx)), lH = Math.min(lh - ly, Math.ceil(by1 - ly));
     if (lW <= 0 || lH <= 0) return;
     lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.clearRect(lx, ly, lW, lH);
-    lctx.setTransform(PL, 0, 0, PL, 0, 0);
+    lctx.setTransform(T[0], T[1], T[2], T[3], T[4], T[5]);
     drawParts(lctx);
     sctx.setTransform(1, 0, 0, 1, 0, 0); sctx.clearRect(lx, ly, lW, lH);
     sctx.globalCompositeOperation = "source-over"; sctx.drawImage(layer, lx, ly, lW, lH, lx, ly, lW, lH);
@@ -1478,6 +1557,10 @@
   let batYaw = 0;
   // 상점 꾸미기: 타자 장신구 (머리 · 손 · 배트) · 홈런 꼬리
   const GEAR = window.FAB ? { head: FAB.equipped("baseball", "head"), hand: FAB.equipped("baseball", "hand"), bat: FAB.equipped("baseball", "bat"), trail: FAB.equipped("baseball", "trail") } : {};
+  function batterPr() {
+    const L = LU(), pr0 = makeProjector(BX, BD, 0.8), gb = pr0(V(0, 0, 0));
+    return q => { const o = pr0(q); return { x: gb.x + (o.x - gb.x) * L.w, y: gb.y + (o.y - gb.y) * L.h, k: o.k * L.w }; };
+  }
   function drawBatter(c) {
     const p = batterPose(), th = p.th * Math.PI / 180, hth = p.hth * Math.PI / 180;
     const chest = V(Math.cos(th), 0, Math.sin(th)), axis = V(-Math.sin(th), 0, Math.cos(th));   // axis: 뒤어깨 → 앞어깨
@@ -1500,8 +1583,7 @@
       lf: p.ff, rf: p.bf, lfo: norm(add(hChest, V(0, 0, 0.4))), rfo: norm(add(hChest, V(0, 0, -0.1))),
     };
     // 체격: 발밑을 기준으로 가로·세로를 늘이거나 줄인다 (팔다리 굵기도 가로 배율만큼)
-    const L = LU(), pr0 = makeProjector(BX, BD, 0.8), gb = pr0(V(0, 0, 0));
-    const pr = q => { const o = pr0(q); return { x: gb.x + (o.x - gb.x) * L.w, y: gb.y + (o.y - gb.y) * L.h, k: o.k * L.w }; };
+    const L = LU(), pr = batterPr();
     const KIT = L.suit ? { ...BATTER_KIT, ...L.suit } : BATTER_KIT;
     const g0 = pr(V(0, 0, 0)); c.fillStyle = "rgba(0,0,0,.22)"; c.beginPath(); c.ellipse(g0.x, g0.y, 58 * L.w, 11, 0, 0, 7); c.fill();
     const tip = add(grip, mul(bat, 0.86)), knob = add(grip, mul(bat, -0.06)), barrel = add(grip, mul(bat, 0.5));
@@ -1596,7 +1678,7 @@
   }
   function drawZone(c) {
     const a = proj(ZONE.x0, ZONE.y1, PLATE_D), b = proj(ZONE.x1, ZONE.y0, PLATE_D);
-    c.strokeStyle = "rgba(255,255,255,.28)"; c.lineWidth = 1.5; c.setLineDash([6, 5]);
+    c.strokeStyle = `rgba(255,255,255,${0.28 * (1 - camK)})`; c.lineWidth = 1.5; c.setLineDash([6, 5]);
     c.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y); c.setLineDash([]);
   }
 
@@ -1650,7 +1732,7 @@
     const age = now - P.tArr, life = 1500;
     if (age > life) return;
     const zEnd = clamp((now - P.tRel) / P.flight, 0, 1);
-    const a = age < 0 ? 1 : 1 - age / life, col = PITCHES[P.type].col;
+    const a = (age < 0 ? 1 : 1 - age / life) * (1 - camK), col = PITCHES[P.type].col;   // 홈런 클로즈업 중엔 감춘다
     c.save(); c.globalCompositeOperation = "lighter"; c.lineCap = "round"; c.lineJoin = "round";
     const pts = []; for (let i = 0; i <= 28; i++) { const zz = 0.1 + (zEnd - 0.1) * i / 28; pts.push(ballScreen(ballPos(zz))); }
     for (const [w, al] of [[7, 0.12], [3, 0.5]]) {
@@ -1861,15 +1943,13 @@
       drawBackground(b);
     }
     // 맞는 순간의 흔들림·확대 (전광판·글자는 흔들지 않는다)
-    let shaking = false;
-    if (jolt) {
-      const e = performance.now() - jolt.at, d = Math.max(0, 1 - e / 320);
-      if (e > 700) jolt = null;
-      else if (d > 0) {
-        const a = jolt.amp * d * d, z = 1 + jolt.zoom * d + (a * 2.4) / Math.min(W, H);
-        shaking = true; ctx.save();
-        ctx.translate(jolt.x + (Math.random() * 2 - 1) * a, jolt.y + (Math.random() * 2 - 1) * a * 0.7); ctx.scale(z, z); ctx.translate(-jolt.x, -jolt.y);
-      }
+    // 경기장(배경·인물·공)만 확대·흔들고, 전광판·버튼·알림 글자는 그대로 둔다
+    if (jolt && performance.now() - jolt.at > Math.max(700, jolt.dur + 50)) jolt = null;
+    const cam = joltCam(), shaking = !!cam;
+    camZ = cam ? cam.z : 1; camK = cam && jolt && jolt.close ? cam.k : 0;
+    if (cam) {
+      ctx.save();
+      ctx.translate(cam.px, cam.py); if (cam.rot) ctx.rotate(cam.rot); ctx.scale(cam.z, cam.z); ctx.translate(-cam.fx, -cam.fy);
     }
     if (shaking) ctx.drawImage(bgCache, 0, 0, W, H);
     else { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(bgCache, 0, 0); ctx.restore(); }
@@ -1889,8 +1969,9 @@
     drawImpact(ctx);
     drawHrFx(ctx);
     if (shaking) ctx.restore();
+    drawCloseFx(ctx, cam);
     drawSlow(ctx);
-    if (jolt) { const e = performance.now() - jolt.at; if (e < 140) { ctx.fillStyle = `rgba(255,252,235,${jolt.flash * (1 - e / 140)})`; ctx.fillRect(0, 0, W, H); } }
+    if (jolt) { const e = performance.now() - jolt.at, fl = jolt.close ? 90 : 140; if (e < fl) { ctx.fillStyle = `rgba(255,252,235,${jolt.flash * (1 - e / fl)})`; ctx.fillRect(0, 0, W, H); } }
     if (state !== "title" && G) { drawBoard(ctx); drawLineup(ctx); }
     drawMsg(ctx);
   }
